@@ -1,6 +1,10 @@
-// Grouping uses the device's local time zone. Pin it to America/Mexico_City
-// (UTC-6, no DST), so local day boundaries differ from UTC ones.
-import '@/test/pin-timezone';
+/**
+ * Grouping uses the device's local time zone. Pin it to America/Mexico_City
+ * (UTC-6, no DST), so local day boundaries differ from UTC ones.
+ *
+ * @jest-environment ./src/test/timezone-environment.js
+ * @jest-environment-options {"timezone": "America/Mexico_City"}
+ */
 
 import { groupByLocalDay, localDayKey, relativeDay } from '@/services/day-groups';
 import type { Transaction } from '@/services/transactions';

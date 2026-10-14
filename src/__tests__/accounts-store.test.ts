@@ -1,4 +1,5 @@
 import { useAccountsStore } from '@/stores/accounts-store';
+import { useTransactionsStore } from '@/stores/transactions-store';
 
 const mockList = jest.fn();
 const mockCreate = jest.fn();
@@ -72,6 +73,31 @@ describe('accounts store', () => {
     mockRemove.mockResolvedValue(undefined);
     await expect(useAccountsStore.getState().remove(1)).resolves.toBe(true);
     expect(useAccountsStore.getState().accounts.map((a) => a.id)).toEqual([2]);
+  });
+
+  it('drops the removed account transactions from the transactions store, and only on success', async () => {
+    const tx = (id: number, accountId: number) => ({
+      id,
+      accountId,
+      kind: 'expense' as const,
+      amountCents: 100,
+      date: '2026-03-01T00:00:00.000Z',
+      note: null,
+      recurringId: null,
+      createdAt: '2026-03-01T00:00:00.000Z',
+    });
+    useAccountsStore.setState({ accounts: [make(1, 'A'), make(2, 'B')] as never });
+    useTransactionsStore.setState({
+      transactions: [tx(1, 1), tx(2, 2), tx(3, 1)],
+      status: 'ready',
+    });
+    mockRemove.mockRejectedValueOnce(new Error('disk'));
+    await expect(useAccountsStore.getState().remove(1)).resolves.toBe(false);
+    expect(useTransactionsStore.getState().transactions).toHaveLength(3);
+
+    mockRemove.mockResolvedValue(undefined);
+    await expect(useAccountsStore.getState().remove(1)).resolves.toBe(true);
+    expect(useTransactionsStore.getState().transactions.map((item) => item.id)).toEqual([2]);
   });
 
   it('flags saveError and keeps state when a write fails', async () => {

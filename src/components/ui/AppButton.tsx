@@ -1,7 +1,7 @@
 import { StyleSheet } from 'react-native';
 import { Button } from 'react-native-paper';
 
-import { colors, sizes } from '@/theme';
+import { colors, disabledColor, sizes } from '@/theme';
 
 type Props = {
   label: string;
@@ -14,7 +14,13 @@ export function AppButton({ label, onPress, variant = 'primary', disabled }: Pro
   return (
     <Button
       mode={variant === 'primary' ? 'contained' : 'outlined'}
-      textColor={variant === 'destructive' ? colors.alert : undefined}
+      textColor={
+        variant === 'destructive'
+          ? disabled
+            ? disabledColor(colors.alert)
+            : colors.alert
+          : undefined
+      }
       onPress={onPress}
       disabled={disabled}
       style={styles.button}

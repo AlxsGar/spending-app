@@ -1,7 +1,13 @@
 import { useEffect } from 'react';
 import { create } from 'zustand';
 
-import { createTransaction, listTransactions, sortTransactions } from '@/services/transactions';
+import {
+  createTransaction,
+  listTransactions,
+  removeTransaction,
+  sortTransactions,
+  updateTransaction,
+} from '@/services/transactions';
 import type { Transaction, TransactionInput } from '@/services/transactions';
 
 type Status = 'idle' | 'loading' | 'ready' | 'error';
@@ -12,6 +18,12 @@ type TransactionsState = {
   load: () => Promise<void>;
   // Resolves true when saved. The form shows its own error on false.
   add: (input: TransactionInput) => Promise<boolean>;
+  // Replaces the row and re-sorts. Resolves the saved transaction, or null
+  // when saving failed.
+  update: (id: number, input: TransactionInput) => Promise<Transaction | null>;
+  remove: (id: number) => Promise<boolean>;
+  // Drops an account's transactions from memory after the account was deleted.
+  dropForAccount: (accountId: number) => void;
 };
 
 export const useTransactionsStore = create<TransactionsState>((set, get) => ({
@@ -43,6 +55,34 @@ export const useTransactionsStore = create<TransactionsState>((set, get) => ({
       return false;
     }
   },
+  update: async (id, input) => {
+    try {
+      const updated = await updateTransaction(id, input);
+      set((state) => ({
+        transactions: sortTransactions(
+          state.transactions.map((item) => (item.id === id ? updated : item)),
+        ),
+      }));
+      return updated;
+    } catch {
+      return null;
+    }
+  },
+  remove: async (id) => {
+    try {
+      await removeTransaction(id);
+      set((state) => ({
+        transactions: state.transactions.filter((item) => item.id !== id),
+      }));
+      return true;
+    } catch {
+      return false;
+    }
+  },
+  dropForAccount: (accountId) =>
+    set((state) => ({
+      transactions: state.transactions.filter((item) => item.accountId !== accountId),
+    })),
 }));
 
 // Loads the transactions the first time a screen needs them. A failed load

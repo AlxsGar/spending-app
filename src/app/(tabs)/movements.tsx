@@ -27,6 +27,7 @@ export default function MovementsScreen() {
       <TransactionList
         transactions={transactions}
         accounts={accounts}
+        onOpen={(id) => router.push({ pathname: '/transaction/[id]', params: { id } })}
         empty={
           <EmptyState
             title={t('movements.emptyTitle')}

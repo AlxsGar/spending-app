@@ -36,7 +36,22 @@ export const en = {
     delete: 'Delete',
     deleteTitle: 'Delete account?',
     deleteMessage: 'This permanently removes the account. This cannot be undone.',
+    deleteMessageWithTransactions_one:
+      'This deletes the account and its {{count}} transaction. This cannot be undone.',
+    // _many is only used by Spanish; es.ts is typed from this file, so it is here too.
+    deleteMessageWithTransactions_many:
+      'This deletes the account and its {{count}} transactions. This cannot be undone.',
+    deleteMessageWithTransactions_other:
+      'This deletes the account and its {{count}} transactions. This cannot be undone.',
     deleteError: 'Could not delete the account. Try again.',
+    currencyChangeTitle: 'Change currency?',
+    currencyChangeMessage_one:
+      'The {{count}} transaction in this account keeps its amount and will show in {{to}} instead of {{from}}. Nothing is converted.',
+    currencyChangeMessage_many:
+      'The {{count}} transactions in this account keep their amounts and will show in {{to}} instead of {{from}}. Nothing is converted.',
+    currencyChangeMessage_other:
+      'The {{count}} transactions in this account keep their amounts and will show in {{to}} instead of {{from}}. Nothing is converted.',
+    currencyChangeConfirm: 'Change currency',
     errors: {
       nameRequired: 'Enter a name for the account.',
       nameTooLong: 'The name can have at most 40 characters.',
@@ -71,6 +86,14 @@ export const en = {
     saveError: 'Could not save the transaction. Try again.',
     savedIncome: 'Income saved',
     savedExpense: 'Expense saved',
+    editTitle: 'Edit transaction',
+    updatedIncome: 'Income updated',
+    updatedExpense: 'Expense updated',
+    notFound: 'This transaction no longer exists.',
+    delete: 'Delete',
+    deleteTitle: 'Delete transaction?',
+    deleteMessage: 'This permanently removes the transaction. This cannot be undone.',
+    deleteError: 'Could not delete the transaction. Try again.',
     today: 'Today',
     yesterday: 'Yesterday',
     latest: 'Latest transactions',

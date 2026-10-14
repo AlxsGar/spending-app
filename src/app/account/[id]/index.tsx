@@ -121,6 +121,8 @@ export default function AccountDetailScreen() {
           <AppButton
             label={t('accounts.delete')}
             variant="destructive"
+            // The confirmation states how many transactions go too, so wait for them.
+            disabled={transactionsStatus !== 'ready'}
             onPress={() => {
               setDeleteFailed(false);
               setConfirming(true);
@@ -137,11 +139,20 @@ export default function AccountDetailScreen() {
           accounts={accounts}
           header={header}
           empty={empty}
+          onOpen={(transactionId) =>
+            router.push({ pathname: '/transaction/[id]', params: { id: transactionId } })
+          }
         />
         <ConfirmDialog
           visible={confirming}
           title={t('accounts.deleteTitle')}
-          message={t('accounts.deleteMessage')}
+          message={
+            accountTransactions.length > 0
+              ? t('accounts.deleteMessageWithTransactions', {
+                  count: accountTransactions.length,
+                })
+              : t('accounts.deleteMessage')
+          }
           confirmLabel={t('accounts.delete')}
           cancelLabel={t('common.cancel')}
           onConfirm={() => void confirmDelete()}

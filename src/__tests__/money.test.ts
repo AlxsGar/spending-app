@@ -1,4 +1,28 @@
-import { MAX_AMOUNT_CENTS, formatSignedMoney, parseAmountToCents } from '@/services/money';
+import {
+  MAX_AMOUNT_CENTS,
+  formatCentsForInput,
+  formatSignedMoney,
+  parseAmountToCents,
+} from '@/services/money';
+
+describe('formatCentsForInput', () => {
+  it.each([
+    [1250, 'USD', '12.50'],
+    [5, 'USD', '0.05'],
+    [100, 'USD', '1.00'],
+    [MAX_AMOUNT_CENTS, 'MXN', '999999999.99'],
+    [50000, 'JPY', '500'],
+    // A JPY account holding a former USD amount keeps its decimals.
+    [1250, 'JPY', '12.50'],
+  ])('formats %i cents in %s as %s and round-trips', (value, currency, text) => {
+    expect(formatCentsForInput(value, currency)).toBe(text);
+    expect(parseAmountToCents(text, currency)).toEqual(
+      currency === 'JPY' && value % 100 !== 0
+        ? { ok: false, code: 'decimalsNotAllowed' }
+        : { ok: true, cents: value },
+    );
+  });
+});
 
 const cents = (input: string, currency = 'USD') => {
   const result = parseAmountToCents(input, currency);

@@ -1,4 +1,9 @@
-import { createTransaction, listTransactions } from '@/services/transactions';
+import {
+  createTransaction,
+  listTransactions,
+  removeTransaction,
+  updateTransaction,
+} from '@/services/transactions';
 import type { Transaction, TransactionInput } from '@/services/transactions';
 import { useTransactionsStore } from '@/stores/transactions-store';
 
@@ -6,6 +11,8 @@ jest.mock('@/services/transactions', () => ({
   ...jest.requireActual('@/services/transactions'),
   createTransaction: jest.fn(),
   listTransactions: jest.fn(),
+  updateTransaction: jest.fn(),
+  removeTransaction: jest.fn(),
 }));
 
 const make = (id: number, date: string): Transaction => ({
@@ -64,6 +71,42 @@ describe('transactions store', () => {
     (createTransaction as jest.Mock).mockRejectedValue(new Error('db'));
     expect(await useTransactionsStore.getState().add(input)).toBe(false);
     expect(useTransactionsStore.getState().transactions).toHaveLength(2);
+  });
+
+  it('updates a row in place, re-sorts, and reports failure as false', async () => {
+    useTransactionsStore.setState({
+      transactions: [make(2, '2026-03-02T00:00:00.000Z'), make(1, '2026-03-01T00:00:00.000Z')],
+      status: 'ready',
+    });
+    // Row 1 moves to a later date, so it becomes the first.
+    const saved = {
+      ...make(1, '2026-03-05T00:00:00.000Z'),
+      amountCents: 999,
+      createdAt: '2026-03-01T00:00:00.000Z',
+    };
+    (updateTransaction as jest.Mock).mockResolvedValue(saved);
+    expect(await useTransactionsStore.getState().update(1, input)).toEqual(saved);
+    const list = useTransactionsStore.getState().transactions;
+    expect(list.map((item) => item.id)).toEqual([1, 2]);
+    expect(list[0].amountCents).toBe(999);
+
+    (updateTransaction as jest.Mock).mockRejectedValue(new Error('db'));
+    expect(await useTransactionsStore.getState().update(1, input)).toBeNull();
+    expect(useTransactionsStore.getState().transactions).toHaveLength(2);
+  });
+
+  it('removes a row, and keeps it when the delete fails', async () => {
+    useTransactionsStore.setState({
+      transactions: [make(2, '2026-03-02T00:00:00.000Z'), make(1, '2026-03-01T00:00:00.000Z')],
+      status: 'ready',
+    });
+    (removeTransaction as jest.Mock).mockRejectedValueOnce(new Error('db'));
+    expect(await useTransactionsStore.getState().remove(2)).toBe(false);
+    expect(useTransactionsStore.getState().transactions).toHaveLength(2);
+
+    (removeTransaction as jest.Mock).mockResolvedValue(undefined);
+    expect(await useTransactionsStore.getState().remove(2)).toBe(true);
+    expect(useTransactionsStore.getState().transactions.map((item) => item.id)).toEqual([1]);
   });
 
   it('keeps a transaction added while a load is in flight', async () => {

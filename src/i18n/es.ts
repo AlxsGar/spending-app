@@ -40,7 +40,21 @@ export const es: Translations = {
     delete: 'Eliminar',
     deleteTitle: '¿Eliminar cuenta?',
     deleteMessage: 'Esto elimina la cuenta de forma permanente. No se puede deshacer.',
+    deleteMessageWithTransactions_one:
+      'Esto elimina la cuenta y su {{count}} transacción. No se puede deshacer.',
+    deleteMessageWithTransactions_many:
+      'Esto elimina la cuenta y sus {{count}} transacciones. No se puede deshacer.',
+    deleteMessageWithTransactions_other:
+      'Esto elimina la cuenta y sus {{count}} transacciones. No se puede deshacer.',
     deleteError: 'No se pudo eliminar la cuenta. Inténtalo de nuevo.',
+    currencyChangeTitle: '¿Cambiar la moneda?',
+    currencyChangeMessage_one:
+      'La {{count}} transacción de esta cuenta conserva su monto y se mostrará en {{to}} en lugar de {{from}}. No se convierte nada.',
+    currencyChangeMessage_many:
+      'Las {{count}} transacciones de esta cuenta conservan sus montos y se mostrarán en {{to}} en lugar de {{from}}. No se convierte nada.',
+    currencyChangeMessage_other:
+      'Las {{count}} transacciones de esta cuenta conservan sus montos y se mostrarán en {{to}} en lugar de {{from}}. No se convierte nada.',
+    currencyChangeConfirm: 'Cambiar moneda',
     errors: {
       nameRequired: 'Escribe un nombre para la cuenta.',
       nameTooLong: 'El nombre puede tener como máximo 40 caracteres.',
@@ -75,6 +89,14 @@ export const es: Translations = {
     saveError: 'No se pudo guardar la transacción. Inténtalo de nuevo.',
     savedIncome: 'Ingreso guardado',
     savedExpense: 'Gasto guardado',
+    editTitle: 'Editar transacción',
+    updatedIncome: 'Ingreso actualizado',
+    updatedExpense: 'Gasto actualizado',
+    notFound: 'Esta transacción ya no existe.',
+    delete: 'Eliminar',
+    deleteTitle: '¿Eliminar transacción?',
+    deleteMessage: 'Esto elimina la transacción de forma permanente. No se puede deshacer.',
+    deleteError: 'No se pudo eliminar la transacción. Inténtalo de nuevo.',
     today: 'Hoy',
     yesterday: 'Ayer',
     latest: 'Últimas transacciones',

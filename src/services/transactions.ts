@@ -98,6 +98,31 @@ export function composeTransactionDate(day: Date, now: Date): string {
   ).toISOString();
 }
 
+// The stored date after an edit. Same local day as the original: the original
+// timestamp, untouched. Another day: that local day at the ORIGINAL local time
+// of day, but never later than `now`: moving an evening transaction to today
+// in the morning stores `now` instead of a time in the future.
+//
+// The unchanged-day rule wins over the cap: an original that is somehow already
+// in the future is returned as it was, because an edit that does not change
+// the day does not touch the timestamp.
+//
+// Daylight saving time: a time that does not exist on the new day (02:30 on a
+// spring-forward day) is resolved forward by JavaScript, so it is stored as
+// 03:30 that day. A time that happens twice (01:30 on a fall-back day) resolves
+// to the first occurrence. The cap is applied after that resolution. All are
+// pinned in compose-edited-date-dst.test.ts.
+export function composeEditedDate(
+  originalIso: string,
+  day: Date,
+  now: Date = new Date(),
+): string {
+  const original = new Date(originalIso);
+  if (localDayNumber(original) === localDayNumber(day)) return originalIso;
+  const composed = composeTransactionDate(day, original);
+  return composed > now.toISOString() ? now.toISOString() : composed;
+}
+
 // Returns the first problem found, or null when the input is valid. The
 // currency is the chosen account's (null when there is no such account). The
 // form and the service both call this, so they cannot disagree.
@@ -174,6 +199,55 @@ export async function listTransactions(): Promise<Transaction[]> {
     `SELECT ${COLUMNS} FROM transactions ORDER BY date DESC, id DESC`,
   );
   return rows.map(toTransaction);
+}
+
+export async function getTransaction(id: number): Promise<Transaction | null> {
+  const db = await initDb();
+  const row = await db.getFirstAsync<TransactionRow>(
+    `SELECT ${COLUMNS} FROM transactions WHERE id = ?`,
+    id,
+  );
+  return row ? toTransaction(row) : null;
+}
+
+// Changes account, kind, amount, date and note. created_at and recurring_id
+// never change. Throws when the transaction does not exist.
+export async function updateTransaction(
+  id: number,
+  input: TransactionInput,
+  now: Date = new Date(),
+): Promise<Transaction> {
+  const existing = await getTransaction(id);
+  if (!existing) throw new Error(`Transaction ${id} not found`);
+  const account = input.accountId === null ? null : await getAccount(input.accountId);
+  const code = validateTransactionInput(input, account ? account.currency : null, now);
+  if (code || !account) throw new TransactionValidationError(code ?? 'accountNotFound');
+
+  const amount = parseAmountToCents(input.amount, account.currency);
+  if (!amount.ok) throw new TransactionValidationError(AMOUNT_CODES[amount.code]);
+
+  const kind = input.kind as TransactionKind;
+  const date = composeEditedDate(existing.date, input.date, now);
+  const trimmed = input.note.trim();
+  const note = trimmed.length > 0 ? trimmed : null;
+
+  const db = await initDb();
+  const result = await db.runAsync(
+    'UPDATE transactions SET account_id = ?, kind = ?, amount_cents = ?, date = ?, note = ? WHERE id = ?',
+    account.id,
+    kind,
+    amount.cents,
+    date,
+    note,
+    id,
+  );
+  if (result.changes === 0) throw new Error(`Transaction ${id} not found`);
+  return { ...existing, accountId: account.id, kind, amountCents: amount.cents, date, note };
+}
+
+export async function removeTransaction(id: number): Promise<void> {
+  const db = await initDb();
+  await db.runAsync('DELETE FROM transactions WHERE id = ?', id);
 }
 
 export async function createTransaction(

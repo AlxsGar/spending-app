@@ -18,6 +18,17 @@ export function formatSignedMoney(
   return formatMoney(cents, currency);
 }
 
+// Editable text for stored cents, the inverse of parseAmountToCents: "12.50",
+// or "500" for a currency without decimals. A no-decimals amount that is not
+// a whole unit (its account changed currency) keeps its decimals, so the form
+// shows the real value and validation asks the user to fix it.
+export function formatCentsForInput(cents: number, currency: string): string {
+  const whole = Math.floor(cents / 100);
+  const fraction = cents % 100;
+  if (NO_DECIMAL_CURRENCIES.includes(currency) && fraction === 0) return String(whole);
+  return `${whole}.${String(fraction).padStart(2, '0')}`;
+}
+
 // 999,999,999.99 in cents.
 export const MAX_AMOUNT_CENTS = 99_999_999_999;
 

@@ -14,11 +14,12 @@ type Props = {
   // Show the transaction's date under the amount (Home, where rows are
   // ordered by when they were recorded, not by date).
   showDate?: boolean;
+  onPress?: () => void;
 };
 
 // Account name, then the note (or the kind when there is no note), then the
 // amount: "+" and accent for income, a minus sign and alert for expenses.
-export function TransactionRow({ transaction, account, showDate = false }: Props) {
+export function TransactionRow({ transaction, account, showDate = false, onPress }: Props) {
   const { t, i18n } = useTranslation();
   const kind = t(`transactions.${transaction.kind}`);
   const signed = transaction.kind === 'income' ? transaction.amountCents : -transaction.amountCents;
@@ -35,6 +36,7 @@ export function TransactionRow({ transaction, account, showDate = false }: Props
 
   return (
     <ListRow
+      onPress={onPress}
       accessibilityLabel={t('transactions.rowLabel', {
         kind,
         account: account.name,

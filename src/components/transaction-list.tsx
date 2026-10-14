@@ -17,11 +17,13 @@ type Props = {
   header?: ReactNode;
   // Shown when there is nothing to list.
   empty?: ReactNode;
+  // Called with the transaction id when a row is tapped.
+  onOpen?: (id: number) => void;
 };
 
 // Transactions grouped by the device's local day. Rows whose account was
 // deleted are skipped: they have no currency to show.
-export function TransactionList({ transactions, accounts, header, empty }: Props) {
+export function TransactionList({ transactions, accounts, header, empty, onOpen }: Props) {
   const { t, i18n } = useTranslation();
   // Changes at midnight, so "Today" labels follow the clock.
   const todayKey = localDayKey(new Date());
@@ -61,7 +63,13 @@ export function TransactionList({ transactions, accounts, header, empty }: Props
       renderSectionHeader={({ section }) => <SectionHeader title={section.title} />}
       renderItem={({ item }) => {
         const account = known.get(item.accountId);
-        return account ? <TransactionRow transaction={item} account={account} /> : null;
+        return account ? (
+          <TransactionRow
+            transaction={item}
+            account={account}
+            onPress={onOpen ? () => onOpen(item.id) : undefined}
+          />
+        ) : null;
       }}
     />
   );

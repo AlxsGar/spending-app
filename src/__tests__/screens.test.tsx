@@ -84,6 +84,22 @@ describe('tab screens', () => {
     expect(mockPush).toHaveBeenCalledWith('/transaction/new');
   });
 
+  it('Movements opens the edit route when a row is tapped', async () => {
+    (listAccounts as jest.Mock).mockResolvedValue([account]);
+    (listTransactions as jest.Mock).mockResolvedValue([tx(4, 'income', 100, 'tap me')]);
+    await renderWithProviders(<MovementsScreen />);
+    fireEvent.press(await screen.findByText('tap me'));
+    expect(mockPush).toHaveBeenCalledWith({ pathname: '/transaction/[id]', params: { id: 4 } });
+  });
+
+  it('Home opens the edit route when a latest row is tapped', async () => {
+    (listAccounts as jest.Mock).mockResolvedValue([account]);
+    (listTransactions as jest.Mock).mockResolvedValue([tx(6, 'expense', 100, 'tap me')]);
+    await renderWithProviders(<HomeScreen />);
+    fireEvent.press(await screen.findByText('tap me'));
+    expect(mockPush).toHaveBeenCalledWith({ pathname: '/transaction/[id]', params: { id: 6 } });
+  });
+
   it('Accounts shows the balance computed from transactions', async () => {
     (listAccounts as jest.Mock).mockResolvedValue([account]);
     (listTransactions as jest.Mock).mockResolvedValue([

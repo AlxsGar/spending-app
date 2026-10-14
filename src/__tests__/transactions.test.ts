@@ -1,5 +1,9 @@
-// The service uses the device's local time zone, so pin it (UTC-6, no DST).
-import '@/test/pin-timezone';
+/**
+ * The service uses the device's local time zone, so pin it (UTC-6, no DST).
+ *
+ * @jest-environment ./src/test/timezone-environment.js
+ * @jest-environment-options {"timezone": "America/Mexico_City"}
+ */
 
 import {
   TransactionValidationError,
@@ -8,7 +12,9 @@ import {
   createTransaction,
   latestRecorded,
   listTransactions,
+  removeTransaction,
   sortTransactions,
+  updateTransaction,
   validateTransactionInput,
 } from '@/services/transactions';
 import type { Transaction, TransactionInput } from '@/services/transactions';
@@ -37,7 +43,31 @@ const mockDb = {
       a.date === b.date ? b.id - a.id : a.date < b.date ? 1 : -1,
     ),
   ),
-  runAsync: jest.fn(async (_sql: string, ...args: unknown[]) => {
+  getFirstAsync: jest.fn(async (_sql: string, id: number) => {
+    const row = rows.find((item) => item.id === id);
+    return row ? { ...row } : null;
+  }),
+  runAsync: jest.fn(async (sql: string, ...args: unknown[]) => {
+    if (sql.startsWith('UPDATE')) {
+      const [accountId, kind, amount, date, note, id] = args as [
+        number,
+        string,
+        number,
+        string,
+        string | null,
+        number,
+      ];
+      const row = rows.find((item) => item.id === id);
+      if (!row) return { lastInsertRowId: 0, changes: 0 };
+      Object.assign(row, { account_id: accountId, kind, amount_cents: amount, date, note });
+      return { lastInsertRowId: 0, changes: 1 };
+    }
+    if (sql.startsWith('DELETE')) {
+      const [id] = args as [number];
+      const before = rows.length;
+      rows = rows.filter((item) => item.id !== id);
+      return { lastInsertRowId: 0, changes: before - rows.length };
+    }
     const [accountId, kind, amount, date, note, createdAt] = args as [
       number,
       string,
@@ -213,6 +243,83 @@ const make = (
   note: null,
   recurringId: null,
   createdAt: date,
+});
+
+describe('updateTransaction and removeTransaction', () => {
+  beforeEach(() => {
+    rows = [];
+    nextId = 1;
+  });
+
+  const seed = async () =>
+    createTransaction({ ...valid, date: new Date(2026, 2, 5) }, new Date(2026, 2, 5, 14, 45, 10, 250));
+
+  it('changes account, kind, amount and note but never created_at or recurring_id', async () => {
+    const created = await seed();
+    rows[0].recurring_id = 9;
+    const updated = await updateTransaction(
+      created.id,
+      { ...valid, accountId: 2, kind: 'income', amount: '500', note: ' Bonus ', date: new Date(2026, 2, 5) },
+      NOW,
+    );
+    expect(updated).toMatchObject({
+      id: created.id,
+      accountId: 2,
+      kind: 'income',
+      amountCents: 50000,
+      note: 'Bonus',
+      recurringId: 9,
+      createdAt: created.createdAt,
+    });
+    expect(rows[0]).toMatchObject({
+      account_id: 2,
+      kind: 'income',
+      amount_cents: 50000,
+      created_at: created.createdAt,
+      recurring_id: 9,
+    });
+  });
+
+  it('keeps the exact timestamp on the same day', async () => {
+    const created = await seed();
+    const updated = await updateTransaction(created.id, { ...valid, date: new Date(2026, 2, 5) }, NOW);
+    expect(updated.date).toBe(created.date);
+    expect(rows[0].date).toBe(created.date);
+  });
+
+  it('moves to the new local day keeping the original local time of day', async () => {
+    const created = await seed();
+    const updated = await updateTransaction(created.id, { ...valid, date: new Date(2026, 2, 2) }, NOW);
+    expect(updated.date).toBe('2026-03-02T20:45:10.250Z');
+    expect(updated.createdAt).toBe(created.createdAt);
+  });
+
+  it('validates against the selected account: JPY rejects decimals', async () => {
+    const created = await seed();
+    await expect(
+      updateTransaction(created.id, { ...valid, accountId: 2, amount: '12.50' }, NOW),
+    ).rejects.toMatchObject({ code: 'amountDecimalsNotAllowed' });
+    await expect(
+      updateTransaction(created.id, { ...valid, date: new Date(2026, 2, 11) }, NOW),
+    ).rejects.toMatchObject({ code: 'dateInFuture' });
+    await expect(
+      updateTransaction(created.id, { ...valid, note: 'x'.repeat(141) }, NOW),
+    ).rejects.toBeInstanceOf(TransactionValidationError);
+    await expect(
+      updateTransaction(created.id, { ...valid, accountId: 99 }, NOW),
+    ).rejects.toMatchObject({ code: 'accountNotFound' });
+    expect(rows[0]).toMatchObject({ account_id: 1, amount_cents: 1250 });
+  });
+
+  it('throws when the transaction does not exist', async () => {
+    await expect(updateTransaction(42, valid, NOW)).rejects.toThrow('not found');
+  });
+
+  it('removes a transaction', async () => {
+    const created = await seed();
+    await removeTransaction(created.id);
+    expect(rows).toHaveLength(0);
+  });
 });
 
 describe('computeBalances', () => {

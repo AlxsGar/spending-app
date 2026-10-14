@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ScrollView, StyleSheet, View } from 'react-native';
 
@@ -23,6 +24,10 @@ import { spacing } from '@/theme';
 type Props = {
   accounts: Account[];
   initialAccountId: number;
+  // Prefill for editing; a new transaction starts as an expense today.
+  initial?: { kind: TransactionKind; amount: string; date: Date; note: string };
+  // Extra content under the save button (the edit screen's delete action).
+  children?: ReactNode;
   // Resolves true when the transaction was saved.
   onSubmit: (input: TransactionInput) => Promise<boolean>;
 };
@@ -36,13 +41,19 @@ const AMOUNT_ERRORS = [
   'amountTooManyDecimals',
 ];
 
-export function TransactionForm({ accounts, initialAccountId, onSubmit }: Props) {
+export function TransactionForm({
+  accounts,
+  initialAccountId,
+  initial,
+  children,
+  onSubmit,
+}: Props) {
   const { t, i18n } = useTranslation();
   const [accountId, setAccountId] = useState(initialAccountId);
-  const [kind, setKind] = useState<TransactionKind>('expense');
-  const [amount, setAmount] = useState('');
-  const [date, setDate] = useState(() => new Date());
-  const [note, setNote] = useState('');
+  const [kind, setKind] = useState<TransactionKind>(initial?.kind ?? 'expense');
+  const [amount, setAmount] = useState(initial?.amount ?? '');
+  const [date, setDate] = useState(() => initial?.date ?? new Date());
+  const [note, setNote] = useState(initial?.note ?? '');
   const [submitted, setSubmitted] = useState(false);
   const [saving, setSaving] = useState(false);
   const [failed, setFailed] = useState(false);
@@ -127,6 +138,7 @@ export function TransactionForm({ accounts, initialAccountId, onSubmit }: Props)
       />
       {failed ? <AppText color="alert">{t('transactions.saveError')}</AppText> : null}
       <AppButton label={t('transactions.save')} onPress={() => void save()} disabled={saving} />
+      {children}
     </ScrollView>
   );
 }

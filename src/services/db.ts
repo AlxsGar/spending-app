@@ -1,7 +1,7 @@
 import * as SQLite from 'expo-sqlite';
 
 const DB_NAME = 'spending.db';
-const SCHEMA_VERSION = 3;
+const SCHEMA_VERSION = 4;
 
 let dbPromise: Promise<SQLite.SQLiteDatabase> | null = null;
 
@@ -47,13 +47,67 @@ async function migrate(db: SQLite.SQLiteDatabase): Promise<void> {
         'CREATE INDEX IF NOT EXISTS idx_transactions_account_date ON transactions (account_id, date)',
       );
     }
+    if (current < 4) {
+      // Rows left behind by account deletes before they cascaded.
+      await db.execAsync(
+        'DELETE FROM transactions WHERE account_id NOT IN (SELECT id FROM accounts)',
+      );
+      // Rebuild with a foreign key (SQLite cannot add one in place), following
+      // the documented procedure. Foreign keys are OFF here (see open()).
+      await db.execAsync(
+        `CREATE TABLE transactions_new (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          account_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+          kind TEXT NOT NULL CHECK (kind IN ('expense','income')),
+          amount_cents INTEGER NOT NULL CHECK (amount_cents > 0),
+          date TEXT NOT NULL,
+          note TEXT,
+          recurring_id INTEGER,
+          created_at TEXT NOT NULL
+        )`,
+      );
+      await db.execAsync(
+        `INSERT INTO transactions_new (id, account_id, kind, amount_cents, date, note, recurring_id, created_at)
+         SELECT id, account_id, kind, amount_cents, date, note, recurring_id, created_at FROM transactions`,
+      );
+      // AUTOINCREMENT: keep the old counter if it is ahead of the highest copied
+      // id (the latest rows were deleted), so ids are never reused.
+      await db.execAsync(
+        `UPDATE sqlite_sequence
+         SET seq = max(seq, (SELECT COALESCE(max(seq), 0) FROM sqlite_sequence WHERE name = 'transactions'))
+         WHERE name = 'transactions_new'`,
+      );
+      await db.execAsync(
+        `INSERT INTO sqlite_sequence (name, seq)
+         SELECT 'transactions_new', seq FROM sqlite_sequence
+         WHERE name = 'transactions'
+           AND NOT EXISTS (SELECT 1 FROM sqlite_sequence WHERE name = 'transactions_new')`,
+      );
+      await db.execAsync('DROP TABLE transactions');
+      await db.execAsync('ALTER TABLE transactions_new RENAME TO transactions');
+      await db.execAsync(
+        'CREATE INDEX idx_transactions_account_date ON transactions (account_id, date)',
+      );
+      // Throwing here rolls the whole upgrade back, user_version included.
+      const violations = await db.getAllAsync('PRAGMA foreign_key_check');
+      if (violations.length > 0) {
+        throw new Error('Foreign key check failed after rebuilding transactions');
+      }
+    }
     await db.execAsync(`PRAGMA user_version = ${SCHEMA_VERSION}`);
   });
 }
 
 async function open(): Promise<SQLite.SQLiteDatabase> {
   const db = await SQLite.openDatabaseAsync(DB_NAME);
+  // PRAGMA foreign_keys does nothing inside a transaction, so it is set here,
+  // outside migrate()'s transaction: OFF while tables are rebuilt, ON after,
+  // on every open.
+  await db.execAsync('PRAGMA foreign_keys = OFF');
   await migrate(db);
+  await db.execAsync('PRAGMA foreign_keys = ON');
+  const enabled = await db.getFirstAsync<{ foreign_keys: number }>('PRAGMA foreign_keys');
+  if (enabled?.foreign_keys !== 1) throw new Error('Could not enable foreign keys');
   return db;
 }
 

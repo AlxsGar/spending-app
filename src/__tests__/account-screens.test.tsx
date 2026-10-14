@@ -1,4 +1,4 @@
-import { fireEvent, screen, waitFor } from '@testing-library/react-native';
+import { act, fireEvent, screen, waitFor } from '@testing-library/react-native';
 
 import NewAccountScreen from '@/app/account/new';
 import AccountDetailScreen from '@/app/account/[id]/index';
@@ -83,6 +83,13 @@ describe('account detail screen', () => {
     expect(screen.queryByText('+€77.77')).toBeNull();
   });
 
+  it('opens the edit route when a transaction row is tapped', async () => {
+    (listTransactions as jest.Mock).mockResolvedValue([{ ...tx(3, 7, 'income', 5000), note: 'Pay' }]);
+    await renderWithProviders(<AccountDetailScreen />);
+    fireEvent.press(await screen.findByText('Pay'));
+    expect(mockPush).toHaveBeenCalledWith({ pathname: '/transaction/[id]', params: { id: 3 } });
+  });
+
   it('shows an empty message, an error with retry, and the add action', async () => {
     await renderWithProviders(<AccountDetailScreen />);
     expect(await screen.findByText(en.transactions.accountEmpty)).toBeTruthy();
@@ -130,6 +137,84 @@ describe('account detail screen', () => {
     await waitFor(() => expect(removeAccount).toHaveBeenCalledWith(7));
     await waitFor(() => expect(mockBack).toHaveBeenCalledTimes(1));
     expect(useAccountsStore.getState().accounts).toHaveLength(0);
+  });
+});
+
+describe('account delete with transactions', () => {
+  const tx = (id: number) => ({
+    id,
+    accountId: 7,
+    kind: 'expense' as const,
+    amountCents: 100,
+    date: new Date(Date.now() - id * 1000).toISOString(),
+    note: null,
+    recurringId: null,
+    createdAt: '2026-01-01T00:00:00.000Z',
+  });
+
+  it('says how many transactions go with the account, and Cancel keeps everything', async () => {
+    (listTransactions as jest.Mock).mockResolvedValue([tx(1), tx(2)]);
+    await renderWithProviders(<AccountDetailScreen />);
+    await screen.findByText(en.transactions.today);
+    fireEvent.press(screen.getByText(en.accounts.delete));
+    expect(
+      await screen.findByText('This deletes the account and its 2 transactions. This cannot be undone.'),
+    ).toBeTruthy();
+    fireEvent.press(screen.getByText(en.common.cancel));
+    await waitFor(() => expect(screen.queryByText(en.accounts.deleteTitle)).toBeNull());
+    expect(removeAccount).not.toHaveBeenCalled();
+    expect(useTransactionsStore.getState().transactions).toHaveLength(2);
+  });
+
+  it('keeps Delete disabled until the transactions have loaded', async () => {
+    let finish: (rows: ReturnType<typeof tx>[]) => void = () => {};
+    (listTransactions as jest.Mock).mockReturnValue(
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+    );
+    await renderWithProviders(<AccountDetailScreen />);
+    const button = await screen.findByRole('button', { name: en.accounts.delete });
+    expect(button.props.accessibilityState?.disabled).toBe(true);
+    fireEvent.press(screen.getByText(en.accounts.delete));
+    expect(screen.queryByText(en.accounts.deleteTitle)).toBeNull();
+
+    await act(async () => {
+      finish([tx(1)]);
+    });
+    await waitFor(() =>
+      expect(
+        screen.getByRole('button', { name: en.accounts.delete }).props.accessibilityState
+          ?.disabled,
+      ).toBeFalsy(),
+    );
+    fireEvent.press(screen.getByText(en.accounts.delete));
+    expect(await screen.findByText(en.accounts.deleteTitle)).toBeTruthy();
+  });
+
+  it('uses the singular for one transaction', async () => {
+    (listTransactions as jest.Mock).mockResolvedValue([tx(1)]);
+    await renderWithProviders(<AccountDetailScreen />);
+    await screen.findByText(en.transactions.today);
+    fireEvent.press(screen.getByText(en.accounts.delete));
+    expect(
+      await screen.findByText('This deletes the account and its 1 transaction. This cannot be undone.'),
+    ).toBeTruthy();
+  });
+
+  it('Confirm removes the account and its transactions from both stores', async () => {
+    (listTransactions as jest.Mock).mockResolvedValue([tx(1), tx(2)]);
+    (removeAccount as jest.Mock).mockResolvedValue(undefined);
+    await renderWithProviders(<AccountDetailScreen />);
+    await screen.findByText(en.transactions.today);
+    fireEvent.press(screen.getByText(en.accounts.delete));
+    await screen.findByText(en.accounts.deleteTitle);
+    const deletes = screen.getAllByText(en.accounts.delete);
+    fireEvent.press(deletes[deletes.length - 1]);
+
+    await waitFor(() => expect(mockBack).toHaveBeenCalledTimes(1));
+    expect(useAccountsStore.getState().accounts).toHaveLength(0);
+    expect(useTransactionsStore.getState().transactions).toHaveLength(0);
   });
 });
 
@@ -181,5 +266,40 @@ describe('edit account screen', () => {
     );
     await waitFor(() => expect(mockBack).toHaveBeenCalled());
     expect(useAccountsStore.getState().accounts[0].name).toBe('Renamed');
+  });
+
+  it('asks before changing the currency of an account with transactions, amounts untouched', async () => {
+    const stored = {
+      id: 1,
+      accountId: 7,
+      kind: 'expense' as const,
+      amountCents: 1250,
+      date: '2026-01-02T00:00:00.000Z',
+      note: null,
+      recurringId: null,
+      createdAt: '2026-01-02T00:00:00.000Z',
+    };
+    (listTransactions as jest.Mock).mockResolvedValue([stored]);
+    (updateAccount as jest.Mock).mockResolvedValue({ ...account, currency: 'USD' });
+    await renderWithProviders(<EditAccountScreen />);
+
+    fireEvent.press(await screen.findByLabelText(`${en.accounts.currencyLabel}, EUR`));
+    fireEvent.press(await screen.findByText('USD'));
+    await waitFor(() => expect(screen.queryByText('JPY')).toBeNull());
+    fireEvent.press(screen.getByText(en.accounts.save));
+
+    expect(await screen.findByText(en.accounts.currencyChangeTitle)).toBeTruthy();
+    expect(updateAccount).not.toHaveBeenCalled();
+    fireEvent.press(screen.getByText(en.accounts.currencyChangeConfirm));
+
+    await waitFor(() =>
+      expect(updateAccount).toHaveBeenCalledWith(7, {
+        name: 'Savings',
+        icon: 'wallet',
+        currency: 'USD',
+      }),
+    );
+    await waitFor(() => expect(mockBack).toHaveBeenCalled());
+    expect(useTransactionsStore.getState().transactions[0].amountCents).toBe(1250);
   });
 });

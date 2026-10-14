@@ -66,7 +66,15 @@ export default function HomeScreen() {
           <AppText color="textSecondary">{t('transactions.latestEmpty')}</AppText>
         ) : (
           latest.map(({ item, account }) => (
-            <TransactionRow key={item.id} transaction={item} account={account} showDate />
+            <TransactionRow
+              key={item.id}
+              transaction={item}
+              account={account}
+              showDate
+              onPress={() =>
+                router.push({ pathname: '/transaction/[id]', params: { id: item.id } })
+              }
+            />
           ))
         )}
       </ScrollView>

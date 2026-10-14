@@ -22,6 +22,9 @@ type Row = {
 
 let rows: Row[] = [];
 let nextId = 1;
+// The account id of each stored transaction.
+let transactionAccountIds: number[] = [];
+let failAccountDelete = false;
 let mockSettings: Record<string, string> = {};
 
 const mockDb = {
@@ -52,9 +55,27 @@ const mockDb = {
       return { lastInsertRowId: 0, changes: 1 };
     }
     const [id] = args as [number];
+    if (sql.startsWith('DELETE FROM transactions')) {
+      const beforeTx = transactionAccountIds.length;
+      transactionAccountIds = transactionAccountIds.filter((item) => item !== id);
+      return { lastInsertRowId: 0, changes: beforeTx - transactionAccountIds.length };
+    }
+    if (failAccountDelete) throw new Error('boom');
     const before = rows.length;
     rows = rows.filter((item) => item.id !== id);
     return { lastInsertRowId: 0, changes: before - rows.length };
+  }),
+  // Like SQLite: a throw inside the task rolls everything back.
+  withTransactionAsync: jest.fn(async (task: () => Promise<void>) => {
+    const savedRows = rows.map((row) => ({ ...row }));
+    const savedTransactions = [...transactionAccountIds];
+    try {
+      await task();
+    } catch (error) {
+      rows = savedRows;
+      transactionAccountIds = savedTransactions;
+      throw error;
+    }
   }),
 };
 
@@ -69,7 +90,27 @@ describe('accounts service', () => {
   beforeEach(() => {
     rows = [];
     nextId = 1;
+    transactionAccountIds = [];
+    failAccountDelete = false;
     mockSettings = {};
+  });
+
+  it('removes an account together with its transactions', async () => {
+    const a = await createAccount(valid);
+    const b = await createAccount(valid);
+    transactionAccountIds = [a.id, b.id, a.id];
+    await removeAccount(a.id);
+    expect((await listAccounts()).map((item) => item.id)).toEqual([b.id]);
+    expect(transactionAccountIds).toEqual([b.id]);
+  });
+
+  it('removes nothing when the account delete fails after the transactions were deleted', async () => {
+    const a = await createAccount(valid);
+    transactionAccountIds = [a.id, a.id];
+    failAccountDelete = true;
+    await expect(removeAccount(a.id)).rejects.toThrow('boom');
+    expect((await listAccounts()).map((item) => item.id)).toEqual([a.id]);
+    expect(transactionAccountIds).toEqual([a.id, a.id]);
   });
 
   it('keeps the icon and currency lists in the agreed order', () => {

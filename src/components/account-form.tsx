@@ -5,6 +5,7 @@ import { ScrollView, StyleSheet, View } from 'react-native';
 import {
   AppButton,
   AppText,
+  ConfirmDialog,
   CurrencyPicker,
   IconPicker,
   Screen,
@@ -23,9 +24,12 @@ type Props = {
   initial: AccountInput;
   // Resolves true when the account was saved.
   onSubmit: (input: AccountInput) => Promise<boolean>;
+  // Transactions the account already has. When above 0, changing the currency
+  // asks for confirmation before saving.
+  transactionCount?: number;
 };
 
-export function AccountForm({ initial, onSubmit }: Props) {
+export function AccountForm({ initial, onSubmit, transactionCount = 0 }: Props) {
   const { t } = useTranslation();
   const [name, setName] = useState(initial.name);
   const [icon, setIcon] = useState(initial.icon);
@@ -37,9 +41,9 @@ export function AccountForm({ initial, onSubmit }: Props) {
   // Errors appear after the first save attempt, then follow the input.
   const code = submitted ? validateAccountInput({ name, icon, currency }) : null;
 
-  const save = async () => {
-    setSubmitted(true);
-    if (validateAccountInput({ name, icon, currency })) return;
+  const [confirmingCurrency, setConfirmingCurrency] = useState(false);
+
+  const submit = async () => {
     setSaving(true);
     setFailed(false);
     const ok = await onSubmit({ name, icon, currency });
@@ -48,6 +52,17 @@ export function AccountForm({ initial, onSubmit }: Props) {
       setSaving(false);
       setFailed(true);
     }
+  };
+
+  const save = async () => {
+    setSubmitted(true);
+    if (validateAccountInput({ name, icon, currency })) return;
+    if (currency !== initial.currency && transactionCount > 0) {
+      // The currency picker is already closed here, so this is the only dialog.
+      setConfirmingCurrency(true);
+      return;
+    }
+    await submit();
   };
 
   return (
@@ -90,6 +105,22 @@ export function AccountForm({ initial, onSubmit }: Props) {
         {failed ? <AppText color="alert">{t('accounts.saveError')}</AppText> : null}
         <AppButton label={t('accounts.save')} onPress={() => void save()} disabled={saving} />
       </ScrollView>
+      <ConfirmDialog
+        visible={confirmingCurrency}
+        title={t('accounts.currencyChangeTitle')}
+        message={t('accounts.currencyChangeMessage', {
+          count: transactionCount,
+          from: initial.currency,
+          to: currency,
+        })}
+        confirmLabel={t('accounts.currencyChangeConfirm')}
+        cancelLabel={t('common.cancel')}
+        onConfirm={() => {
+          setConfirmingCurrency(false);
+          void submit();
+        }}
+        onCancel={() => setConfirmingCurrency(false)}
+      />
     </Screen>
   );
 }

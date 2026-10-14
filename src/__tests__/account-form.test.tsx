@@ -83,6 +83,79 @@ describe('AccountForm', () => {
     );
   });
 
+  describe('currency change confirmation', () => {
+    const changeCurrency = async (onSubmit: jest.Mock, transactionCount: number) => {
+      await renderWithProviders(
+        <AccountForm
+          initial={{ ...initial, name: 'Main' }}
+          onSubmit={onSubmit}
+          transactionCount={transactionCount}
+        />,
+      );
+      fireEvent.changeText(screen.getByLabelText(en.accounts.nameLabel), 'Edited');
+      fireEvent.press(screen.getByLabelText(`${en.accounts.currencyLabel}, MXN`));
+      await screen.findByText('JPY');
+      fireEvent.press(screen.getByText('EUR'));
+      await waitFor(() => expect(screen.queryByText('JPY')).toBeNull());
+      fireEvent.press(screen.getByText(en.accounts.save));
+    };
+
+    it('asks first when the currency changed and the account has transactions', async () => {
+      const onSubmit = jest.fn().mockResolvedValue(true);
+      await changeCurrency(onSubmit, 3);
+      expect(await screen.findByText(en.accounts.currencyChangeTitle)).toBeTruthy();
+      expect(
+        screen.getByText(
+          'The 3 transactions in this account keep their amounts and will show in EUR instead of MXN. Nothing is converted.',
+        ),
+      ).toBeTruthy();
+      expect(onSubmit).not.toHaveBeenCalled();
+    });
+
+    it('Confirm saves the new currency', async () => {
+      const onSubmit = jest.fn().mockResolvedValue(true);
+      await changeCurrency(onSubmit, 1);
+      fireEvent.press(await screen.findByText(en.accounts.currencyChangeConfirm));
+      await waitFor(() =>
+        expect(onSubmit).toHaveBeenCalledWith({ name: 'Edited', icon: 'bank', currency: 'EUR' }),
+      );
+    });
+
+    it('Cancel saves nothing and keeps the edits', async () => {
+      const onSubmit = jest.fn().mockResolvedValue(true);
+      await changeCurrency(onSubmit, 2);
+      await screen.findByText(en.accounts.currencyChangeTitle);
+      fireEvent.press(screen.getByText(en.common.cancel));
+      await waitFor(() =>
+        expect(screen.queryByText(en.accounts.currencyChangeTitle)).toBeNull(),
+      );
+      expect(onSubmit).not.toHaveBeenCalled();
+      expect(screen.getByLabelText(en.accounts.nameLabel).props.value).toBe('Edited');
+      expect(screen.getByLabelText(`${en.accounts.currencyLabel}, EUR`)).toBeTruthy();
+    });
+
+    it('saves directly with no transactions', async () => {
+      const onSubmit = jest.fn().mockResolvedValue(true);
+      await changeCurrency(onSubmit, 0);
+      await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
+      expect(screen.queryByText(en.accounts.currencyChangeTitle)).toBeNull();
+    });
+
+    it('saves directly when the currency did not change', async () => {
+      const onSubmit = jest.fn().mockResolvedValue(true);
+      await renderWithProviders(
+        <AccountForm
+          initial={{ ...initial, name: 'Main' }}
+          onSubmit={onSubmit}
+          transactionCount={5}
+        />,
+      );
+      fireEvent.press(screen.getByText(en.accounts.save));
+      await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
+      expect(screen.queryByText(en.accounts.currencyChangeTitle)).toBeNull();
+    });
+  });
+
   it('currency dialog Cancel keeps the current currency', async () => {
     const onSubmit = jest.fn().mockResolvedValue(true);
     await renderWithProviders(

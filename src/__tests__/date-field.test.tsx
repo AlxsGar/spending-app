@@ -1,4 +1,7 @@
-import '@/test/pin-timezone';
+/**
+ * @jest-environment ./src/test/timezone-environment.js
+ * @jest-environment-options {"timezone": "America/Mexico_City"}
+ */
 
 import { DateTimePickerAndroid } from '@react-native-community/datetimepicker';
 import { act, fireEvent, screen } from '@testing-library/react-native';

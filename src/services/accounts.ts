@@ -163,7 +163,11 @@ export async function updateAccount(id: number, input: AccountInput): Promise<Ac
 
 export async function removeAccount(id: number): Promise<void> {
   const db = await initDb();
-  await db.runAsync('DELETE FROM accounts WHERE id = ?', id);
+  // One database transaction: a failure removes neither.
+  await db.withTransactionAsync(async () => {
+    await db.runAsync('DELETE FROM transactions WHERE account_id = ?', id);
+    await db.runAsync('DELETE FROM accounts WHERE id = ?', id);
+  });
 }
 
 export async function getDefaultCurrency(): Promise<Currency> {
