@@ -40,6 +40,11 @@ Rules:
   `AppText`, `AppButton`, `AppCard`, `AmountText`, `EmptyState`). If a
   wrapper is missing, create it there first, then use it.
 - A screen file composes components. It holds no styling numbers.
+- Use React Native Paper's components whenever one exists for the need,
+  always through the wrappers in `src/components/ui/`. Build a custom
+  component only when Paper has nothing suitable, and say so in the slice
+  report. Custom wrappers are still built from Paper primitives inside;
+  only the composition is ours.
 
 ## Spacing and layout
 

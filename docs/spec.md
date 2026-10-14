@@ -74,9 +74,9 @@ Rules:
 
 ## Screens
 
-Bottom tabs: **Home / Accounts / Movements / Settings**. Every tab has a `+`
-FAB that opens a menu: *Add transaction*, *Add recurring payment*, *Add
-account*.
+Bottom tabs: **Home / Accounts / Movements / Settings**. Home, Accounts and
+Movements have a `+` FAB that opens a menu: *Add transaction*, *Add recurring
+payment*, *Add account*. Settings has no FAB.
 
 ### Home
 
@@ -138,7 +138,7 @@ slice comes up.
 
 Light theme, categories, bank sync, cloud sync, multi-device, currency
 conversion, paid tier (RevenueCat), ads (AdMob), French, widgets, Apple
-Watch. `[Q11]` App lock (PIN or biometrics): decide before release.
+Watch, web (v1 targets iOS and Android only). `[Q11]` App lock (PIN or biometrics): decide before release.
 
 ## Open questions
 
