@@ -84,6 +84,28 @@ Every screen and list handles all four states: loading, empty, error, and
 populated. The empty state says what the screen is for and offers the one
 action that fills it.
 
+## Success feedback
+
+After a successful create or save that returns the user to another screen,
+confirm it with the shared success card.
+
+- Call `showSuccess({ icon, tone, message, amountText? })` from
+  `src/stores/success-store.ts`, after the save resolves and right before
+  `router.back()`. The one `SuccessHost` lives in `src/components/app-gate.tsx`;
+  never mount another.
+- Content: a Paper icon (`arrow-up` with tone `positive` for income,
+  `arrow-down` with `negative` for expense, `check` for neutral saves), a short
+  translated message ("Income saved"), and the signed amount when there is one.
+  The caller translates and formats; the host stays generic.
+- Timing: bounces in with `Animated.spring`, dismisses itself after
+  `motion.successDuration`, and a tap on the card or the backdrop dismisses it
+  sooner. With reduce motion on, it only fades.
+- It announces message and amount to screen readers, and the card is an
+  `alert` that a tap dismisses.
+- Never on failure: errors stay inline in the form.
+- It shows over the screen the user returns to, so it never stacks on another
+  modal.
+
 ## Do not
 
 - No gradients, drop shadows beyond Paper elevation, or decorative icons.

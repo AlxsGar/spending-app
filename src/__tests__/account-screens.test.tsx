@@ -11,7 +11,9 @@ import {
   updateAccount,
 } from '@/services/accounts';
 import { getSetting } from '@/services/db';
+import { listTransactions } from '@/services/transactions';
 import { useAccountsStore } from '@/stores/accounts-store';
+import { useTransactionsStore } from '@/stores/transactions-store';
 import { renderWithProviders } from '@/test/render';
 
 const mockBack = jest.fn();
@@ -31,6 +33,11 @@ jest.mock('@/services/accounts', () => ({
   removeAccount: jest.fn(),
 }));
 
+jest.mock('@/services/transactions', () => ({
+  ...jest.requireActual('@/services/transactions'),
+  listTransactions: jest.fn(),
+}));
+
 jest.mock('@/services/db', () => ({ getSetting: jest.fn(), initDb: jest.fn() }));
 
 const account = {
@@ -45,10 +52,55 @@ const account = {
 beforeEach(() => {
   jest.clearAllMocks();
   (listAccounts as jest.Mock).mockResolvedValue([account]);
+  (listTransactions as jest.Mock).mockResolvedValue([]);
   useAccountsStore.setState({ accounts: [], status: 'idle', saveError: false });
+  useTransactionsStore.setState({ transactions: [], status: 'idle' });
 });
 
 describe('account detail screen', () => {
+  const tx = (id: number, accountId: number, kind: 'expense' | 'income', amountCents: number) => ({
+    id,
+    accountId,
+    kind,
+    amountCents,
+    date: new Date(Date.now() - id * 1000).toISOString(),
+    note: null,
+    recurringId: null,
+    createdAt: '2026-01-01T00:00:00.000Z',
+  });
+
+  it('lists only this account transactions and shows its balance', async () => {
+    (listTransactions as jest.Mock).mockResolvedValue([
+      tx(1, 7, 'income', 5000),
+      tx(2, 9, 'income', 7777),
+      tx(3, 7, 'expense', 1000),
+    ]);
+    await renderWithProviders(<AccountDetailScreen />);
+    expect(await screen.findByText(en.transactions.today)).toBeTruthy();
+    expect(screen.getAllByText('€40.00').length).toBeGreaterThan(0);
+    expect(screen.getByText('+€50.00')).toBeTruthy();
+    expect(screen.getByText('−€10.00')).toBeTruthy();
+    expect(screen.queryByText('+€77.77')).toBeNull();
+  });
+
+  it('shows an empty message, an error with retry, and the add action', async () => {
+    await renderWithProviders(<AccountDetailScreen />);
+    expect(await screen.findByText(en.transactions.accountEmpty)).toBeTruthy();
+    fireEvent.press(screen.getByText(en.transactions.add));
+    expect(mockPush).toHaveBeenCalledWith({
+      pathname: '/transaction/new',
+      params: { accountId: 7 },
+    });
+  });
+
+  it('shows a transactions error with retry', async () => {
+    (listTransactions as jest.Mock).mockRejectedValueOnce(new Error('db'));
+    await renderWithProviders(<AccountDetailScreen />);
+    expect(await screen.findByText(en.common.loadError)).toBeTruthy();
+    fireEvent.press(screen.getByText(en.common.retry));
+    expect(await screen.findByText(en.transactions.accountEmpty)).toBeTruthy();
+  });
+
   it('shows the account, and Cancel keeps it', async () => {
     await renderWithProviders(<AccountDetailScreen />);
     expect(await screen.findByText('Savings')).toBeTruthy();
@@ -115,7 +167,7 @@ describe('edit account screen', () => {
 
     const field = await screen.findByLabelText(en.accounts.nameLabel);
     expect(field.props.value).toBe('Savings');
-    expect(screen.getByText('EUR')).toBeTruthy();
+    expect(screen.getByDisplayValue('EUR', { includeHiddenElements: true })).toBeTruthy();
 
     fireEvent.changeText(field, 'Renamed');
     fireEvent.press(screen.getByText(en.accounts.save));

@@ -3,15 +3,16 @@ import { FlatList } from 'react-native';
 
 import { AmountText, ListRow } from '@/components/ui';
 import type { Account } from '@/services/accounts';
-import { formatMoney } from '@/services/money';
+import { formatSignedMoney } from '@/services/money';
 
 type Props = {
   accounts: Account[];
+  // Balance in cents per account id; a missing id means 0.
+  balances: Record<number, number>;
   onOpen: (id: number) => void;
 };
 
-// Balance is 0 until transactions exist (a later slice).
-export function AccountList({ accounts, onOpen }: Props) {
+export function AccountList({ accounts, balances, onOpen }: Props) {
   const { t } = useTranslation();
   return (
     <FlatList
@@ -21,13 +22,13 @@ export function AccountList({ accounts, onOpen }: Props) {
         <ListRow
           accessibilityLabel={t('accounts.cardLabel', {
             name: item.name,
-            balance: formatMoney(0, item.currency),
+            balance: formatSignedMoney(balances[item.id] ?? 0, item.currency),
             currency: item.currency,
           })}
           icon={item.icon}
           title={item.name}
           description={item.currency}
-          right={<AmountText cents={0} currency={item.currency} />}
+          right={<AmountText cents={balances[item.id] ?? 0} currency={item.currency} colored />}
           onPress={() => onOpen(item.id)}
         />
       )}

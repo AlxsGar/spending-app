@@ -33,6 +33,17 @@ export const sizes = {
   accountCard: 160,
   accountCardHeight: 176,
   dialogList: 320,
+  successIcon: 48,
+  successCardMinWidth: 200,
+} as const;
+
+// Timing and spring settings for the success feedback card.
+export const motion = {
+  successDuration: 1500,
+  fadeDuration: 200,
+  springFriction: 6,
+  springTension: 80,
+  successStartScale: 0.7,
 } as const;
 
 // Fixed-size elements grow with the system font scale, up to these caps. Text

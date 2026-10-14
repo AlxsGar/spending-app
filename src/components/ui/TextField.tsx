@@ -1,4 +1,5 @@
 import { StyleSheet, View } from 'react-native';
+import type { KeyboardTypeOptions } from 'react-native';
 import { HelperText, TextInput } from 'react-native-paper';
 
 import { colors } from '@/theme';
@@ -10,9 +11,21 @@ type Props = {
   errorText?: string;
   helperText?: string;
   maxLength?: number;
+  keyboardType?: KeyboardTypeOptions;
+  // Short fixed text after the input, such as a currency code.
+  suffix?: string;
 };
 
-export function TextField({ label, value, onChangeText, errorText, helperText, maxLength }: Props) {
+export function TextField({
+  label,
+  value,
+  onChangeText,
+  errorText,
+  helperText,
+  maxLength,
+  keyboardType,
+  suffix,
+}: Props) {
   return (
     <View>
       <TextInput
@@ -21,6 +34,8 @@ export function TextField({ label, value, onChangeText, errorText, helperText, m
         accessibilityLabel={label}
         value={value}
         maxLength={maxLength}
+        keyboardType={keyboardType}
+        right={suffix ? <TextInput.Affix text={suffix} /> : undefined}
         onChangeText={onChangeText}
         error={Boolean(errorText)}
         style={styles.input}

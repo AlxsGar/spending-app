@@ -35,7 +35,7 @@ const sizeOf = (id: number) => {
 describe('AccountCards sizing', () => {
   it('gives every card the same theme size at the default font scale', async () => {
     mockFontScale = 1;
-    await renderWithProviders(<AccountCards accounts={accounts} onOpen={jest.fn()} />);
+    await renderWithProviders(<AccountCards accounts={accounts} balances={{}} onOpen={jest.fn()} />);
     const expected = { width: sizes.accountCard, height: sizes.accountCardHeight };
     expect(sizeOf(1)).toEqual(expected);
     expect(sizeOf(2)).toEqual(expected);
@@ -44,7 +44,7 @@ describe('AccountCards sizing', () => {
 
   it('scales every card identically above fontScale 1', async () => {
     mockFontScale = 1.5;
-    await renderWithProviders(<AccountCards accounts={accounts} onOpen={jest.fn()} />);
+    await renderWithProviders(<AccountCards accounts={accounts} balances={{}} onOpen={jest.fn()} />);
     const expected = {
       width: Math.round(sizes.accountCard * 1.25),
       height: Math.round(sizes.accountCardHeight * 1.5),
@@ -57,7 +57,7 @@ describe('AccountCards sizing', () => {
 
   it('caps the growth at the theme limits', async () => {
     mockFontScale = 4;
-    await renderWithProviders(<AccountCards accounts={accounts} onOpen={jest.fn()} />);
+    await renderWithProviders(<AccountCards accounts={accounts} balances={{}} onOpen={jest.fn()} />);
     expect(sizeOf(2)).toEqual({
       width: Math.round(sizes.accountCard * fontScaleLimits.maxWidth),
       height: Math.round(sizes.accountCardHeight * fontScaleLimits.maxHeight),

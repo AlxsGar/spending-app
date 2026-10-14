@@ -1,7 +1,7 @@
 import * as SQLite from 'expo-sqlite';
 
 const DB_NAME = 'spending.db';
-const SCHEMA_VERSION = 2;
+const SCHEMA_VERSION = 3;
 
 let dbPromise: Promise<SQLite.SQLiteDatabase> | null = null;
 
@@ -27,6 +27,24 @@ async function migrate(db: SQLite.SQLiteDatabase): Promise<void> {
           in_global_cap INTEGER NOT NULL DEFAULT 1,
           created_at TEXT NOT NULL
         )`,
+      );
+    }
+    if (current < 3) {
+      // recurring_id has no foreign key: the recurring table comes later.
+      await db.execAsync(
+        `CREATE TABLE IF NOT EXISTS transactions (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          account_id INTEGER NOT NULL,
+          kind TEXT NOT NULL CHECK (kind IN ('expense','income')),
+          amount_cents INTEGER NOT NULL CHECK (amount_cents > 0),
+          date TEXT NOT NULL,
+          note TEXT,
+          recurring_id INTEGER,
+          created_at TEXT NOT NULL
+        )`,
+      );
+      await db.execAsync(
+        'CREATE INDEX IF NOT EXISTS idx_transactions_account_date ON transactions (account_id, date)',
       );
     }
     await db.execAsync(`PRAGMA user_version = ${SCHEMA_VERSION}`);

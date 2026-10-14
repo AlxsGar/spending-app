@@ -15,7 +15,12 @@ export function AddFab() {
       label={t('fab.open')}
       visible={focused}
       actions={[
-        { key: 'transaction', label: t('fab.addTransaction'), icon: 'cash-plus', onPress: noop },
+        {
+          key: 'transaction',
+          label: t('fab.addTransaction'),
+          icon: 'cash-plus',
+          onPress: () => router.push('/transaction/new'),
+        },
         { key: 'recurring', label: t('fab.addRecurring'), icon: 'calendar-sync', onPress: noop },
         {
           key: 'account',

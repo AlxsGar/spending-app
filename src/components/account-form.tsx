@@ -79,17 +79,14 @@ export function AccountForm({ initial, onSubmit }: Props) {
             }))}
           />
         </View>
-        <View style={styles.section}>
-          <AppText variant="bodyStrong">{t('accounts.currencyLabel')}</AppText>
-          <CurrencyPicker
-            value={currency}
-            options={CURRENCIES}
-            onChange={setCurrency}
-            accessibilityLabel={t('accounts.currencyPicker')}
-            title={t('accounts.currencyPicker')}
-            cancelLabel={t('common.cancel')}
-          />
-        </View>
+        <CurrencyPicker
+          value={currency}
+          options={CURRENCIES}
+          onChange={setCurrency}
+          label={t('accounts.currencyLabel')}
+          title={t('accounts.currencyPicker')}
+          cancelLabel={t('common.cancel')}
+        />
         {failed ? <AppText color="alert">{t('accounts.saveError')}</AppText> : null}
         <AppButton label={t('accounts.save')} onPress={() => void save()} disabled={saving} />
       </ScrollView>

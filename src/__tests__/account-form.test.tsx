@@ -72,7 +72,7 @@ describe('AccountForm', () => {
     await renderWithProviders(
       <AccountForm initial={{ ...initial, name: 'Main' }} onSubmit={onSubmit} />,
     );
-    fireEvent.press(screen.getByLabelText(en.accounts.currencyPicker));
+    fireEvent.press(screen.getByLabelText(`${en.accounts.currencyLabel}, MXN`));
     expect(await screen.findByText('JPY')).toBeTruthy();
     fireEvent.press(screen.getByText('EUR'));
     await waitFor(() => expect(screen.queryByText('JPY')).toBeNull());
@@ -88,7 +88,7 @@ describe('AccountForm', () => {
     await renderWithProviders(
       <AccountForm initial={{ ...initial, name: 'Main' }} onSubmit={onSubmit} />,
     );
-    fireEvent.press(screen.getByLabelText(en.accounts.currencyPicker));
+    fireEvent.press(screen.getByLabelText(`${en.accounts.currencyLabel}, MXN`));
     await screen.findByText('JPY');
     fireEvent.press(screen.getByText(en.common.cancel));
     await waitFor(() => expect(screen.queryByText('JPY')).toBeNull());

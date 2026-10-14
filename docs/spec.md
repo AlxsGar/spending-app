@@ -28,6 +28,14 @@ v1 is dark theme only.
   changed on edit; changing it relabels existing amounts and nothing is
   recalculated. From the transactions slice on, changing the currency of an
   account that already has transactions asks for confirmation first.
+- `balance_anchor_cents`, `balance_anchor_at` - an optional balance the user
+  sets (initial balance when creating the account, or current balance later
+  on edit), and the moment it was set. May be negative (for example credit
+  cards). The account balance is the anchor amount plus income minus
+  expenses of transactions dated after `balance_anchor_at`; with no anchor
+  set, every transaction counts. Comparison is by transaction date, so a
+  backdated transaction added after the balance was set, dated before it,
+  does not count.
 - `in_global_cap` - boolean. Whether this account's expenses count toward
   the global soft cap.
 - `created_at`
@@ -37,7 +45,9 @@ v1 is dark theme only.
 - `id`, `account_id`
 - `kind` - `expense` | `income`
 - `amount_cents` - integer, always positive; `kind` gives the sign
-- `date` - the day it happened (defaults to today)
+- `date` - the day it happened (defaults to today). Stored as an ISO UTC
+  timestamp: the chosen local day combined with the current local time of
+  day. Future dates are not allowed; recurring payments cover planned items.
 - `note` - optional
 - `recurring_id` - set when the transaction was created by confirming a
   recurring payment
@@ -88,7 +98,11 @@ payment*, *Add account*. Settings has no FAB.
 - An "upcoming" card with a bell icon whenever a recurring payment is due
   within the next 7 days. It lists those payments. It is a card only; it
   never sends a notification.
-- Latest 3 transactions across all accounts.
+- Latest 3 transactions across all accounts: the three most recently
+  recorded (by `created_at`), not by transaction date. Each row shows the
+  transaction's date as secondary text under the amount, so a backdated
+  entry is visibly dated. Movements and the account detail order and group
+  by transaction date.
 - Chart of income and expenses. Default until decided: current month,
   bars per week, income in `accent`, expenses in `alert`. `[Q7]` period
   selector later.
