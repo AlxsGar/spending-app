@@ -58,7 +58,7 @@ export default function NewTransactionScreen() {
                 icon: income ? 'arrow-up' : 'arrow-down',
                 tone: income ? 'positive' : 'negative',
                 message: t(income ? 'transactions.savedIncome' : 'transactions.savedExpense'),
-                amountText:
+                detail:
                   currency && parsed?.ok
                     ? formatSignedMoney(income ? parsed.cents : -parsed.cents, currency, {
                         showPlus: true,

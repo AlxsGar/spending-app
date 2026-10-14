@@ -12,8 +12,8 @@ export function useLedger() {
   const transactions = useTransactions();
 
   const balances = useMemo(
-    () => computeBalances(transactions.transactions),
-    [transactions.transactions],
+    () => computeBalances(accounts.accounts, transactions.transactions),
+    [accounts.accounts, transactions.transactions],
   );
 
   let status: 'loading' | 'error' | 'ready' = 'ready';

@@ -55,11 +55,21 @@ export const es: Translations = {
     currencyChangeMessage_other:
       'Las {{count}} transacciones de esta cuenta conservan sus montos y se mostrarán en {{to}} en lugar de {{from}}. No se convierte nada.',
     currencyChangeConfirm: 'Cambiar moneda',
+    initialBalanceLabel: 'Saldo inicial (opcional)',
+    currentBalanceLabel: 'Saldo actual',
+    balanceSetOn: 'Saldo establecido el {{date}}',
+    created: 'Cuenta creada',
+    updated: 'Cuenta actualizada',
     errors: {
       nameRequired: 'Escribe un nombre para la cuenta.',
       nameTooLong: 'El nombre puede tener como máximo 40 caracteres.',
       invalidIcon: 'Elige un ícono.',
       invalidCurrency: 'Elige una moneda.',
+      balanceRequired: 'Escribe el saldo, o 0.',
+      balanceInvalid: 'Escribe un monto válido, como 12.50.',
+      balanceTooLarge: 'El saldo puede ser como máximo 999,999,999.99.',
+      balanceDecimalsNotAllowed: 'Esta moneda no tiene decimales.',
+      balanceTooManyDecimals: 'Usa como máximo 2 decimales.',
     },
     icons: {
       bank: 'Banco',

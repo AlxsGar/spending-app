@@ -2,7 +2,9 @@ import { fireEvent, screen, waitFor } from '@testing-library/react-native';
 import { useState } from 'react';
 
 import { OptionPicker } from '@/components/ui';
-import { renderWithProviders } from '@/test/render';
+import { fakeAnimationTimers, renderWithProviders } from '@/test/render';
+
+fakeAnimationTimers();
 
 const LONG = 'A'.repeat(40);
 const options = [

@@ -323,37 +323,105 @@ describe('updateTransaction and removeTransaction', () => {
 });
 
 describe('computeBalances', () => {
-  it('is empty with no transactions', () => {
-    expect(computeBalances([])).toEqual({});
+  const acct = (id: number, balanceAnchorCents = 0, balanceAnchorAt: string | null = null) => ({
+    id,
+    balanceAnchorCents,
+    balanceAnchorAt,
+  });
+  const ANCHOR = '2026-03-10T12:00:00.000Z';
+
+  it('is 0 for an account with no transactions, and empty with no accounts', () => {
+    expect(computeBalances([], [])).toEqual({});
+    expect(computeBalances([acct(1)], [])).toEqual({ 1: 0 });
   });
 
-  it('sums income minus expense', () => {
+  it('without an anchor, sums income minus expense of every transaction', () => {
     expect(
-      computeBalances([make(1, 1, 'income', 10000), make(2, 1, 'expense', 2550), make(3, 1, 'income', 1)]),
+      computeBalances(
+        [acct(1)],
+        [
+          make(1, 1, 'income', 10000, '2000-01-01T00:00:00.000Z'),
+          make(2, 1, 'expense', 2550),
+          make(3, 1, 'income', 1),
+        ],
+      ),
     ).toEqual({ 1: 7451 });
   });
 
-  it('goes negative when expenses exceed income', () => {
-    expect(computeBalances([make(1, 1, 'income', 500), make(2, 1, 'expense', 1500)])).toEqual({
-      1: -1000,
-    });
-  });
-
-  it('can be exactly zero', () => {
-    expect(computeBalances([make(1, 1, 'income', 500), make(2, 1, 'expense', 500)])).toEqual({
-      1: 0,
-    });
-  });
-
-  it('keeps accounts separate', () => {
+  it('goes negative when expenses exceed income, and can be exactly zero', () => {
     expect(
-      computeBalances([
-        make(1, 1, 'income', 1000),
-        make(2, 2, 'expense', 300),
-        make(3, 2, 'income', 100),
-        make(4, 3, 'income', 99_999_999_999),
-      ]),
-    ).toEqual({ 1: 1000, 2: -200, 3: 99_999_999_999 });
+      computeBalances([acct(1)], [make(1, 1, 'income', 500), make(2, 1, 'expense', 1500)]),
+    ).toEqual({ 1: -1000 });
+    expect(
+      computeBalances([acct(1)], [make(1, 1, 'income', 500), make(2, 1, 'expense', 500)]),
+    ).toEqual({ 1: 0 });
+  });
+
+  it('with an anchor, counts only transactions strictly after it (exactly at does not count)', () => {
+    const result = computeBalances(
+      [acct(1, 50000, ANCHOR)],
+      [
+        make(1, 1, 'expense', 1000, '2026-03-10T11:59:59.999Z'),
+        make(2, 1, 'expense', 2000, ANCHOR),
+        make(3, 1, 'income', 300, '2026-03-10T12:00:00.001Z'),
+        make(4, 1, 'expense', 25, '2026-04-01T00:00:00.000Z'),
+      ],
+    );
+    expect(result).toEqual({ 1: 50000 + 300 - 25 });
+  });
+
+  it('a backdated transaction recorded after the anchor but dated before it does not count', () => {
+    const backdated: Transaction = {
+      ...make(1, 1, 'expense', 9999, '2026-03-01T12:00:00.000Z'),
+      createdAt: '2026-03-11T08:00:00.000Z',
+    };
+    expect(computeBalances([acct(1, 1000, ANCHOR)], [backdated])).toEqual({ 1: 1000 });
+  });
+
+  it('compares instants, not text: other ISO offsets are parsed', () => {
+    // 13:00+02:00 is 11:00Z, before the 12:00Z anchor.
+    expect(
+      computeBalances(
+        [acct(1, 0, ANCHOR)],
+        [make(1, 1, 'income', 700, '2026-03-10T13:00:00.000+02:00')],
+      ),
+    ).toEqual({ 1: 0 });
+  });
+
+  it('supports a negative anchor', () => {
+    expect(
+      computeBalances(
+        [acct(1, -20000, ANCHOR)],
+        [make(1, 1, 'income', 5000, '2026-03-11T00:00:00.000Z')],
+      ),
+    ).toEqual({ 1: -15000 });
+    expect(computeBalances([acct(1, -20000, ANCHOR)], [])).toEqual({ 1: -20000 });
+  });
+
+  it('a zero anchor with a date still ignores earlier transactions', () => {
+    expect(
+      computeBalances([acct(1, 0, ANCHOR)], [make(1, 1, 'income', 500, '2026-03-09T00:00:00.000Z')]),
+    ).toEqual({ 1: 0 });
+  });
+
+  it('keeps accounts separate, each with its own anchor', () => {
+    expect(
+      computeBalances(
+        [acct(1), acct(2, 1000, ANCHOR), acct(3)],
+        [
+          make(1, 1, 'income', 1000),
+          make(2, 2, 'expense', 300, '2026-03-11T00:00:00.000Z'),
+          make(3, 2, 'income', 100, '2026-03-09T00:00:00.000Z'),
+          make(4, 3, 'income', 99_999_999_999),
+        ],
+      ),
+    ).toEqual({ 1: 1000, 2: 700, 3: 99_999_999_999 });
+  });
+
+  it('ignores transactions of unknown accounts', () => {
+    expect(computeBalances([acct(1)], [make(1, 9, 'income', 500), make(2, 1, 'income', 5)])).toEqual({
+      1: 5,
+    });
   });
 });
 

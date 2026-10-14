@@ -7,6 +7,7 @@ import { LoadingState } from '@/components/ui';
 import { ACCOUNT_ICONS, FALLBACK_CURRENCY, getDefaultCurrency } from '@/services/accounts';
 import type { Currency } from '@/services/accounts';
 import { useAccountsStore } from '@/stores/accounts-store';
+import { showSuccess } from '@/stores/success-store';
 
 export default function NewAccountScreen() {
   const { t } = useTranslation();
@@ -36,7 +37,15 @@ export default function NewAccountScreen() {
           initial={{ name: '', icon: ACCOUNT_ICONS[0], currency }}
           onSubmit={async (input) => {
             const ok = await add(input);
-            if (ok) router.back();
+            if (ok) {
+              showSuccess({
+                icon: 'check',
+                tone: 'neutral',
+                message: t('accounts.created'),
+                detail: input.name.trim(),
+              });
+              router.back();
+            }
             return ok;
           }}
         />

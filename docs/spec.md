@@ -31,11 +31,16 @@ v1 is dark theme only.
 - `balance_anchor_cents`, `balance_anchor_at` - an optional balance the user
   sets (initial balance when creating the account, or current balance later
   on edit), and the moment it was set. May be negative (for example credit
-  cards). The account balance is the anchor amount plus income minus
+  cards): the user types a leading minus (for example `-500.00`), with at
+  most one minus and only at the start; `-0` is 0. There is no sign toggle.
+  Negative balances display in `alert` with the minus sign. The account balance is the anchor amount plus income minus
   expenses of transactions dated after `balance_anchor_at`; with no anchor
   set, every transaction counts. Comparison is by transaction date, so a
   backdated transaction added after the balance was set, dated before it,
-  does not count.
+  does not count. On a new account, an empty or zero initial balance means
+  no anchor. On edit, any change to the current balance (including to 0)
+  sets the anchor to that moment; leaving it unchanged keeps the anchor.
+  When an anchor exists, the account detail shows "Balance set on <date>".
 - `in_global_cap` - boolean. Whether this account's expenses count toward
   the global soft cap.
 - `created_at`

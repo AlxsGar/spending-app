@@ -1,7 +1,9 @@
 import { fireEvent, screen, waitFor } from '@testing-library/react-native';
 
 import { Fab } from '@/components/ui';
-import { renderWithProviders } from '@/test/render';
+import { fakeAnimationTimers, renderWithProviders } from '@/test/render';
+
+fakeAnimationTimers();
 
 const actions = (onA: () => void, onB: () => void) => [
   { key: 'a', label: 'Option A', icon: 'plus', onPress: onA },

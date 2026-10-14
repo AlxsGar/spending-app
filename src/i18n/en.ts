@@ -52,11 +52,21 @@ export const en = {
     currencyChangeMessage_other:
       'The {{count}} transactions in this account keep their amounts and will show in {{to}} instead of {{from}}. Nothing is converted.',
     currencyChangeConfirm: 'Change currency',
+    initialBalanceLabel: 'Initial balance (optional)',
+    currentBalanceLabel: 'Current balance',
+    balanceSetOn: 'Balance set on {{date}}',
+    created: 'Account created',
+    updated: 'Account updated',
     errors: {
       nameRequired: 'Enter a name for the account.',
       nameTooLong: 'The name can have at most 40 characters.',
       invalidIcon: 'Choose an icon.',
       invalidCurrency: 'Choose a currency.',
+      balanceRequired: 'Enter the balance, or 0.',
+      balanceInvalid: 'Enter a valid amount, like 12.50.',
+      balanceTooLarge: 'The balance can be at most 999,999,999.99.',
+      balanceDecimalsNotAllowed: 'This currency has no decimals.',
+      balanceTooManyDecimals: 'Use at most 2 decimals.',
     },
     icons: {
       bank: 'Bank',

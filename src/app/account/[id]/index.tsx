@@ -14,13 +14,14 @@ import {
   LoadingState,
   Screen,
 } from '@/components/ui';
+import { formatShortDate } from '@/services/format-date';
 import { computeBalances } from '@/services/transactions';
 import { useAccounts, useAccountsStore } from '@/stores/accounts-store';
 import { useTransactions } from '@/stores/transactions-store';
 import { sizes, spacing } from '@/theme';
 
 export default function AccountDetailScreen() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
   const { accounts, status, reload } = useAccounts();
@@ -34,7 +35,7 @@ export default function AccountDetailScreen() {
     reload: reloadTransactions,
   } = useTransactions();
   const account = accounts.find((item) => item.id === Number(id));
-  const balances = useMemo(() => computeBalances(transactions), [transactions]);
+  const balances = useMemo(() => computeBalances(accounts, transactions), [accounts, transactions]);
   const accountTransactions = useMemo(
     () => transactions.filter((item) => item.accountId === Number(id)),
     [transactions, id],
@@ -102,6 +103,13 @@ export default function AccountDetailScreen() {
             align="left"
             colored
           />
+          {account.balanceAnchorAt ? (
+            <AppText variant="caption" color="textSecondary">
+              {t('accounts.balanceSetOn', {
+                date: formatShortDate(new Date(account.balanceAnchorAt), i18n.language),
+              })}
+            </AppText>
+          ) : null}
         </View>
         {deleteFailed ? <AppText color="alert">{t('accounts.deleteError')}</AppText> : null}
         <View style={styles.actions}>

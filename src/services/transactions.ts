@@ -1,4 +1,5 @@
 import { getAccount } from './accounts';
+import type { Account } from './accounts';
 import { initDb } from './db';
 import { parseAmountToCents } from './money';
 import type { AmountParseError } from './money';
@@ -180,15 +181,33 @@ export function latestRecorded(
     .slice(0, limit);
 }
 
-// Balance per account = income - expense. Accounts without transactions are
-// absent from the result (their balance is 0).
+// Balance per account = the account's anchor + income - expense of its
+// transactions dated STRICTLY after the anchor. Without an anchor every
+// transaction counts. Dates are compared as instants (parsed), not as text.
+// Every account is in the result; transactions of unknown accounts (orphans)
+// are ignored.
+//
+// Known edge: a transaction's date is the chosen day plus the local time of
+// recording (composeTransactionDate). On a fall-back day the local hour repeats
+// and JavaScript resolves it to the FIRST occurrence, so one recorded in the
+// second 01:xx can be dated an hour earlier than an anchor set in that same
+// second 01:xx, and then does not count. Pinned in balance-dst.test.ts.
 export function computeBalances(
-  transactions: Pick<Transaction, 'accountId' | 'kind' | 'amountCents'>[],
+  accounts: Pick<Account, 'id' | 'balanceAnchorCents' | 'balanceAnchorAt'>[],
+  transactions: Pick<Transaction, 'accountId' | 'kind' | 'amountCents' | 'date'>[],
 ): Record<number, number> {
   const balances: Record<number, number> = {};
+  const anchors: Record<number, number | null> = {};
+  for (const account of accounts) {
+    balances[account.id] = account.balanceAnchorCents;
+    anchors[account.id] =
+      account.balanceAnchorAt === null ? null : new Date(account.balanceAnchorAt).getTime();
+  }
   for (const item of transactions) {
-    const signed = item.kind === 'income' ? item.amountCents : -item.amountCents;
-    balances[item.accountId] = (balances[item.accountId] ?? 0) + signed;
+    if (!(item.accountId in balances)) continue;
+    const anchor = anchors[item.accountId];
+    if (anchor !== null && !(new Date(item.date).getTime() > anchor)) continue;
+    balances[item.accountId] += item.kind === 'income' ? item.amountCents : -item.amountCents;
   }
   return balances;
 }

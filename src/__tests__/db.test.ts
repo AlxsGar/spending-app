@@ -69,11 +69,17 @@ jest.mock('expo-sqlite', () => ({
 const statements = () =>
   mockEvents.filter((event) => !['BEGIN', 'COMMIT', 'ROLLBACK'].includes(event));
 const creates = () => statements().filter((sql) => sql.includes('CREATE TABLE'));
-// From the first v4 statement through the end of the upgrade.
+// From the first v4 statement through the foreign key check that ends it.
 const v4Statements = () => {
   const all = statements();
   const start = all.findIndex((sql) => sql.startsWith('DELETE FROM transactions'));
-  return all.slice(start, all.indexOf('PRAGMA user_version = 4') + 1);
+  return all.slice(start, all.indexOf('PRAGMA foreign_key_check') + 1);
+};
+// From the first v5 statement through the end of the upgrade.
+const v5Statements = () => {
+  const all = statements();
+  const start = all.findIndex((sql) => sql.startsWith('ALTER TABLE accounts ADD COLUMN'));
+  return all.slice(start, all.indexOf('PRAGMA user_version = 5') + 1);
 };
 
 describe('db service', () => {
@@ -98,7 +104,7 @@ describe('db service', () => {
     expect(await getSetting('language')).toBe('es');
   });
 
-  it('runs the table steps in order on a fresh install and ends at v4', async () => {
+  it('runs the table steps in order on a fresh install and ends at v5', async () => {
     await initDb();
     const tables = creates();
     expect(tables).toHaveLength(4);
@@ -107,7 +113,7 @@ describe('db service', () => {
     expect(tables[2]).toContain('transactions (');
     expect(tables[3]).toContain('transactions_new');
     expect(tables[3]).toContain('REFERENCES accounts(id) ON DELETE CASCADE');
-    expect(mockUserVersion).toBe(4);
+    expect(mockUserVersion).toBe(5);
   });
 
   it('runs the same v4 statements on a fresh install and on a v3 upgrade', async () => {
@@ -118,6 +124,19 @@ describe('db service', () => {
     resetDbForTests();
     await initDb();
     expect(v4Statements()).toEqual(fresh);
+  });
+
+  it('runs the same v5 statements on a fresh install and on a v4 upgrade', async () => {
+    await initDb();
+    const fresh = v5Statements();
+    expect(fresh).toHaveLength(3);
+    mockEvents = [];
+    mockUserVersion = 4;
+    resetDbForTests();
+    await initDb();
+    expect(v5Statements()).toEqual(fresh);
+    // A v4 upgrade runs nothing from the older steps.
+    expect(creates()).toEqual([]);
   });
 
   it('runs only the steps after the stored version', async () => {
@@ -133,7 +152,37 @@ describe('db service', () => {
     expect(creates()[0]).toContain('transactions (');
   });
 
-  it('runs the v4 statements in the documented order, version last, all inside one transaction', async () => {
+  it('runs the v5 statements in order, version last, all inside one transaction', async () => {
+    mockUserVersion = 4;
+    await initDb();
+    const run = statements();
+    const order = [
+      'ALTER TABLE accounts ADD COLUMN balance_anchor_cents INTEGER NOT NULL DEFAULT 0',
+      'ALTER TABLE accounts ADD COLUMN balance_anchor_at TEXT',
+      'PRAGMA user_version = 5',
+    ].map((prefix) => run.findIndex((sql) => sql.startsWith(prefix)));
+    expect(order.every((index) => index >= 0)).toBe(true);
+    expect([...order].sort((a, b) => a - b)).toEqual(order);
+    expect(mockEvents.indexOf('BEGIN')).toBeLessThan(mockEvents.indexOf(run[order[0]]));
+    expect(mockEvents.indexOf('PRAGMA user_version = 5')).toBeLessThan(
+      mockEvents.indexOf('COMMIT'),
+    );
+  });
+
+  it.each([
+    ['the first ADD COLUMN', 'ADD COLUMN balance_anchor_cents'],
+    ['the second ADD COLUMN', 'ADD COLUMN balance_anchor_at'],
+  ])('a v5 step that throws at %s stops before the version is written', async (_label, failOn) => {
+    mockUserVersion = 4;
+    mockFailOn = failOn;
+    await expect(initDb()).rejects.toThrow('boom');
+    expect(mockUserVersion).toBe(4);
+    expect(statements()).not.toContain('PRAGMA user_version = 5');
+    expect(mockEvents).toContain('ROLLBACK');
+    expect(mockEvents).not.toContain('COMMIT');
+  });
+
+  it('runs the v4 statements in the documented order, all inside one transaction', async () => {
     mockUserVersion = 3;
     await initDb();
     const run = statements();
@@ -147,12 +196,14 @@ describe('db service', () => {
       'ALTER TABLE transactions_new RENAME TO transactions',
       'CREATE INDEX idx_transactions_account_date ON transactions (account_id, date)',
       'PRAGMA foreign_key_check',
-      'PRAGMA user_version = 4',
+      'ALTER TABLE accounts ADD COLUMN balance_anchor_cents',
+      'ALTER TABLE accounts ADD COLUMN balance_anchor_at',
+      'PRAGMA user_version = 5',
     ].map((prefix) => run.findIndex((sql) => sql.startsWith(prefix)));
     expect(order.every((index) => index >= 0)).toBe(true);
     expect([...order].sort((a, b) => a - b)).toEqual(order);
     expect(mockEvents.indexOf('BEGIN')).toBeLessThan(mockEvents.indexOf(run[order[0]]));
-    expect(mockEvents.indexOf('PRAGMA user_version = 4')).toBeLessThan(
+    expect(mockEvents.indexOf('PRAGMA user_version = 5')).toBeLessThan(
       mockEvents.indexOf('COMMIT'),
     );
   });
@@ -170,7 +221,7 @@ describe('db service', () => {
       mockFailOn = failOn;
       await expect(initDb()).rejects.toThrow('boom');
       expect(mockUserVersion).toBe(3);
-      expect(statements()).not.toContain('PRAGMA user_version = 4');
+      expect(statements()).not.toContain('PRAGMA user_version = 5');
       expect(mockEvents).toContain('ROLLBACK');
       expect(mockEvents).not.toContain('COMMIT');
     });
@@ -179,7 +230,7 @@ describe('db service', () => {
       mockUserVersion = 3;
       mockViolations = 1;
       await expect(initDb()).rejects.toThrow('Foreign key check failed');
-      expect(statements()).not.toContain('PRAGMA user_version = 4');
+      expect(statements()).not.toContain('PRAGMA user_version = 5');
       expect(mockEvents).toContain('ROLLBACK');
       expect(mockUserVersion).toBe(3);
     });
@@ -191,7 +242,7 @@ describe('db service', () => {
       mockFailOn = null;
       mockEvents = [];
       await initDb();
-      expect(mockUserVersion).toBe(4);
+      expect(mockUserVersion).toBe(5);
       expect(statements()).toContain('DROP TABLE transactions');
     });
   });
@@ -213,7 +264,7 @@ describe('db service', () => {
     });
 
     it('are turned ON even when no migration runs', async () => {
-      mockUserVersion = 4;
+      mockUserVersion = 5;
       await initDb();
       expect(mockEvents).not.toContain('BEGIN');
       expect(mockForeignKeys).toBe(1);
@@ -221,7 +272,7 @@ describe('db service', () => {
     });
 
     it('fail loudly when they cannot be switched on', async () => {
-      mockUserVersion = 4;
+      mockUserVersion = 5;
       // A silent no-op: the pragma runs but the setting stays 0.
       mockInTransaction = true;
       await expect(initDb()).rejects.toThrow('Could not enable foreign keys');
@@ -229,7 +280,7 @@ describe('db service', () => {
   });
 
   it('does not migrate again when already up to date', async () => {
-    mockUserVersion = 4;
+    mockUserVersion = 5;
     await initDb();
     expect(mockEvents).not.toContain('BEGIN');
     expect(statements().filter((sql) => !sql.startsWith('PRAGMA foreign_keys'))).toEqual([]);

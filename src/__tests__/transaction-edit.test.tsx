@@ -11,7 +11,9 @@ import {
 import { useAccountsStore } from '@/stores/accounts-store';
 import { useSuccessStore } from '@/stores/success-store';
 import { useTransactionsStore } from '@/stores/transactions-store';
-import { renderWithProviders } from '@/test/render';
+import { fakeAnimationTimers, renderWithProviders } from '@/test/render';
+
+fakeAnimationTimers();
 
 const mockBack = jest.fn();
 const mockPush = jest.fn();
@@ -104,7 +106,7 @@ describe('edit transaction screen', () => {
       icon: 'arrow-down',
       tone: 'negative',
       message: 'Expense updated',
-      amountText: '−$30.00',
+      detail: '−$30.00',
     });
   });
 
@@ -118,7 +120,7 @@ describe('edit transaction screen', () => {
       icon: 'arrow-up',
       tone: 'positive',
       message: 'Income updated',
-      amountText: '+$12.50',
+      detail: '+$12.50',
     });
   });
 

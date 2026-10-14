@@ -65,10 +65,28 @@ const GROUP_SPACE = /[   ]/;
 //   as a decimal and rejected for having 3 decimals.
 // - A separator needs digits on both sides (".5" and "5." are invalid).
 // - A leading "-" (or any sign) is not a number here: negatives are rejected.
-export function parseAmountToCents(input: string, currency: string): AmountParseResult {
-  const text = input.replace(/^\s+|\s+$/g, '');
+//
+// Options, for account balances only (transactions use neither):
+// - `allowZero` accepts an amount of 0.
+// - `allowNegative` accepts ONE "-" immediately before the digits ("-500.00",
+//   "-0,5"); the result is then negative cents. A lone "-", "- 5", "--5", "5-"
+//   and "+5" are invalid. "-0" is 0, never negative zero. The limit applies to
+//   the magnitude.
+export function parseAmountToCents(
+  input: string,
+  currency: string,
+  options: { allowZero?: boolean; allowNegative?: boolean } = {},
+): AmountParseResult {
+  let text = input.replace(/^\s+|\s+$/g, '');
   if (text.length === 0) return { ok: false, code: 'empty' };
-  if (text.startsWith('-') || text.startsWith(MINUS)) return { ok: false, code: 'notPositive' };
+  let negative = false;
+  if (options.allowNegative && text.startsWith('-')) {
+    negative = true;
+    text = text.slice(1);
+    if (text.length === 0) return { ok: false, code: 'invalid' };
+  } else if (text.startsWith('-') || text.startsWith(MINUS)) {
+    return { ok: false, code: 'notPositive' };
+  }
 
   let integerPart = text;
   let fractionPart = '';
@@ -96,7 +114,7 @@ export function parseAmountToCents(input: string, currency: string): AmountParse
   // 9 digits is the most the maximum allows, and keeps the math exact.
   if (whole.length > 9) return { ok: false, code: 'tooLarge' };
   const cents = Number(whole) * 100 + Number(fractionPart.padEnd(2, '0') || '0');
-  if (cents <= 0) return { ok: false, code: 'notPositive' };
+  if (cents === 0 && !options.allowZero) return { ok: false, code: 'notPositive' };
   if (cents > MAX_AMOUNT_CENTS) return { ok: false, code: 'tooLarge' };
-  return { ok: true, cents };
+  return { ok: true, cents: negative && cents > 0 ? -cents : cents };
 }

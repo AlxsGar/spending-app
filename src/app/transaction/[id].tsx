@@ -103,7 +103,7 @@ export default function EditTransactionScreen() {
               icon: income ? 'arrow-up' : 'arrow-down',
               tone: income ? 'positive' : 'negative',
               message: t(income ? 'transactions.updatedIncome' : 'transactions.updatedExpense'),
-              amountText: currency
+              detail: currency
                 ? formatSignedMoney(income ? saved.amountCents : -saved.amountCents, currency, {
                     showPlus: true,
                   })

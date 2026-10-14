@@ -1,7 +1,7 @@
 import * as SQLite from 'expo-sqlite';
 
 const DB_NAME = 'spending.db';
-const SCHEMA_VERSION = 4;
+const SCHEMA_VERSION = 5;
 
 let dbPromise: Promise<SQLite.SQLiteDatabase> | null = null;
 
@@ -93,6 +93,13 @@ async function migrate(db: SQLite.SQLiteDatabase): Promise<void> {
       if (violations.length > 0) {
         throw new Error('Foreign key check failed after rebuilding transactions');
       }
+    }
+    if (current < 5) {
+      // Existing accounts get no anchor (NULL), so their balances do not change.
+      await db.execAsync(
+        'ALTER TABLE accounts ADD COLUMN balance_anchor_cents INTEGER NOT NULL DEFAULT 0',
+      );
+      await db.execAsync('ALTER TABLE accounts ADD COLUMN balance_anchor_at TEXT');
     }
     await db.execAsync(`PRAGMA user_version = ${SCHEMA_VERSION}`);
   });

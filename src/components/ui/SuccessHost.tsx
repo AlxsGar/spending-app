@@ -13,17 +13,18 @@ import { AppText } from './AppText';
 const TONE_COLOR: Record<SuccessTone, ColorToken> = {
   positive: 'accent',
   negative: 'alert',
+  neutral: 'text',
 };
 
 type CardProps = {
   icon: string;
   tone: SuccessTone;
   message: string;
-  amountText?: string;
+  detail?: string;
   onPress: () => void;
 };
 
-function SuccessCard({ icon, tone, message, amountText, onPress }: CardProps) {
+function SuccessCard({ icon, tone, message, detail, onPress }: CardProps) {
   const [opacity] = useState(() => new Animated.Value(0));
   const [scale] = useState(() => new Animated.Value(motion.successStartScale));
 
@@ -62,7 +63,7 @@ function SuccessCard({ icon, tone, message, amountText, onPress }: CardProps) {
     };
   }, [opacity, scale]);
 
-  const label = amountText ? `${message}, ${amountText}` : message;
+  const label = detail ? `${message}, ${detail}` : message;
 
   return (
     <Animated.View style={{ opacity, transform: [{ scale }] }}>
@@ -76,14 +77,9 @@ function SuccessCard({ icon, tone, message, amountText, onPress }: CardProps) {
         <AppText variant="bodyStrong" align="center">
           {message}
         </AppText>
-        {amountText ? (
-          <AppText
-            variant="title"
-            align="center"
-            color={TONE_COLOR[tone]}
-            style={styles.amount}
-          >
-            {amountText}
+        {detail ? (
+          <AppText variant="title" align="center" color={TONE_COLOR[tone]} style={styles.detail}>
+            {detail}
           </AppText>
         ) : null}
       </Pressable>
@@ -106,7 +102,7 @@ export function SuccessHost() {
   useEffect(() => {
     if (id === undefined || !current) return;
     AccessibilityInfo.announceForAccessibility(
-      current.amountText ? `${current.message}, ${current.amountText}` : current.message,
+      current.detail ? `${current.message}, ${current.detail}` : current.message,
     );
     // Cleared on dismiss (id changes), on a newer card, and on unmount.
     const timer = setTimeout(() => hide(id), motion.successDuration);
@@ -128,7 +124,7 @@ export function SuccessHost() {
             icon={last.icon}
             tone={last.tone}
             message={last.message}
-            amountText={last.amountText}
+            detail={last.detail}
             onPress={() => hide()}
           />
         ) : null}
@@ -150,7 +146,7 @@ const styles = StyleSheet.create({
     borderRadius: radius,
     backgroundColor: colors.surface,
   },
-  amount: {
+  detail: {
     fontVariant: ['tabular-nums'],
   },
 });

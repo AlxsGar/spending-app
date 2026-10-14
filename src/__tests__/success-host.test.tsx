@@ -21,13 +21,13 @@ const income: SuccessFeedback = {
   icon: 'arrow-up',
   tone: 'positive',
   message: 'Income saved',
-  amountText: '+$100.00',
+  detail: '+$100.00',
 };
 const expense: SuccessFeedback = {
   icon: 'arrow-down',
   tone: 'negative',
   message: 'Expense saved',
-  amountText: '−$25.50',
+  detail: '−$25.50',
 };
 
 const iconText = () => screen.getByTestId('icon').props.children;
@@ -78,6 +78,17 @@ describe('SuccessHost', () => {
       'Income saved, +$100.00',
     );
     expect(screen.getByRole('alert', { name: 'Income saved, +$100.00' })).toBeTruthy();
+  });
+
+  it('shows a neutral card: check in the text color, message and a plain second line', async () => {
+    await renderWithProviders(<SuccessHost />);
+    await show({ icon: 'check', tone: 'neutral', message: 'Account created', detail: 'Main' });
+    expect(await screen.findByText('Account created')).toBeTruthy();
+    expect(iconText()).toBe('check|text');
+    expect(StyleSheet.flatten(screen.getByText('Main').props.style).color).toBe(colors.text);
+    expect(AccessibilityInfo.announceForAccessibility).toHaveBeenCalledWith(
+      'Account created, Main',
+    );
   });
 
   it('works without an amount', async () => {

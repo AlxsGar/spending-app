@@ -11,7 +11,7 @@
  * @jest-environment node
  */
 import { getSetting, initDb, resetDbForTests } from '@/services/db';
-import { removeAccount } from '@/services/accounts';
+import { createAccount, listAccounts, removeAccount, updateAccount } from '@/services/accounts';
 import { createRealSqlite, seedSchema } from '@/test/real-sqlite';
 import type { RealSqlite } from '@/test/real-sqlite';
 
@@ -79,6 +79,14 @@ const ORPHANS: TxRow[] = [tx(3, 9), tx(5, 8, { note: 'gone' })];
 
 const userVersion = () => mockReal.query<{ user_version: number }>('PRAGMA user_version')[0].user_version;
 const foreignKeys = () => mockReal.query<{ foreign_keys: number }>('PRAGMA foreign_keys')[0].foreign_keys;
+// The two columns added in v5 (name, declared type, NOT NULL flag, default).
+const accountColumns = () =>
+  mockReal
+    .query<{ name: string; type: string; notnull: number; dflt_value: string | null }>(
+      'PRAGMA table_info(accounts)',
+    )
+    .filter((column) => column.name.startsWith('balance_anchor'))
+    .map(({ name, type, notnull, dflt_value }) => ({ name, type, notnull, dflt_value }));
 const allTransactions = () => mockReal.query<TxRow>('SELECT * FROM transactions ORDER BY id');
 // SQLite stores each DDL text as written, so whitespace is collapsed: the seed
 // schemas in the helper are laid out differently from the code in db.ts.
@@ -110,6 +118,22 @@ const seedV3 = async (rows: TxRow[] = [...VALID, ...ORPHANS]) => {
   for (const row of rows) await insertTx(row);
 };
 
+const seedV4 = async (rows: TxRow[] = VALID) => {
+  seedSchema(mockReal, 4);
+  mockReal.exec("INSERT INTO settings (key, value) VALUES ('language', 'es'), ('default_currency', 'EUR')");
+  insertAccounts();
+  for (const row of rows) await insertTx(row);
+};
+
+// Existing accounts get no anchor, so their balances do not change.
+const expectNoAnchors = () =>
+  expect(
+    mockReal.query('SELECT id, balance_anchor_cents, balance_anchor_at FROM accounts ORDER BY id'),
+  ).toEqual([
+    { id: 1, balance_anchor_cents: 0, balance_anchor_at: null },
+    { id: 2, balance_anchor_cents: 0, balance_anchor_at: null },
+  ]);
+
 beforeEach(() => {
   mockReal = createRealSqlite();
   resetDbForTests();
@@ -121,9 +145,13 @@ afterEach(() => {
 });
 
 describe('fresh install', () => {
-  it('ends at v4 with the foreign key in the transactions DDL and the index', async () => {
+  it('ends at v5 with the balance anchor columns, the foreign key in the transactions DDL and the index', async () => {
     await initDb();
-    expect(userVersion()).toBe(4);
+    expect(userVersion()).toBe(5);
+    expect(accountColumns()).toEqual([
+      { name: 'balance_anchor_cents', type: 'INTEGER', notnull: 1, dflt_value: '0' },
+      { name: 'balance_anchor_at', type: 'TEXT', notnull: 0, dflt_value: null },
+    ]);
     const transactions = schema().find((item) => item.name === 'transactions');
     expect(transactions?.sql).toContain('REFERENCES accounts(id) ON DELETE CASCADE');
     expect(transactions?.sql).toContain('AUTOINCREMENT');
@@ -139,18 +167,18 @@ describe('fresh install', () => {
   });
 });
 
-describe('upgrades end at v4 with an identical schema', () => {
-  it('from v1, v2 and v3 the schema equals a fresh install', async () => {
+describe('upgrades end at v5 with an identical schema', () => {
+  it('from v1, v2, v3 and v4 the schema equals a fresh install', async () => {
     await initDb();
     const fresh = schema();
     mockReal.close();
 
-    for (const version of [1, 2, 3] as const) {
+    for (const version of [1, 2, 3, 4] as const) {
       mockReal = createRealSqlite();
       resetDbForTests();
       seedSchema(mockReal, version);
       await initDb();
-      expect(userVersion()).toBe(4);
+      expect(userVersion()).toBe(5);
       expect(schema()).toEqual(fresh);
       mockReal.close();
     }
@@ -162,7 +190,7 @@ describe('upgrades end at v4 with an identical schema', () => {
     seedSchema(mockReal, 1);
     mockReal.exec("INSERT INTO settings (key, value) VALUES ('language', 'es')");
     await initDb();
-    expect(userVersion()).toBe(4);
+    expect(userVersion()).toBe(5);
     expect(await getSetting('language')).toBe('es');
     expect(allTransactions()).toEqual([]);
   });
@@ -172,31 +200,76 @@ describe('upgrades end at v4 with an identical schema', () => {
     mockReal.exec("INSERT INTO settings (key, value) VALUES ('language', 'es')");
     insertAccounts();
     await initDb();
-    expect(userVersion()).toBe(4);
+    expect(userVersion()).toBe(5);
     expect(await getSetting('language')).toBe('es');
     expect(mockReal.query('SELECT id, name, in_global_cap FROM accounts ORDER BY id')).toEqual([
       { id: 1, name: 'Checking', in_global_cap: 1 },
       { id: 2, name: 'Yen "wallet"', in_global_cap: 0 },
     ]);
+    expectNoAnchors();
   });
 
   it('from v3 keeps settings, accounts, valid transactions (same ids and values) and drops orphans', async () => {
     await seedV3();
-    const accountsBefore = mockReal.query('SELECT * FROM accounts ORDER BY id');
+    const accountsBefore = mockReal.query<object>('SELECT * FROM accounts ORDER BY id');
     expect(allTransactions()).toHaveLength(VALID.length + ORPHANS.length);
 
     await initDb();
 
-    expect(userVersion()).toBe(4);
+    expect(userVersion()).toBe(5);
     expect(await getSetting('language')).toBe('es');
     expect(await getSetting('default_currency')).toBe('EUR');
-    expect(mockReal.query('SELECT * FROM accounts ORDER BY id')).toEqual(accountsBefore);
+    // Every old column is unchanged; the two new ones have their defaults.
+    expect(mockReal.query('SELECT * FROM accounts ORDER BY id')).toEqual(
+      accountsBefore.map((row) => ({ ...row, balance_anchor_cents: 0, balance_anchor_at: null })),
+    );
+    expectNoAnchors();
     expect(allTransactions()).toEqual(VALID);
     expect(schema().some((item) => item.name === 'transactions_new')).toBe(false);
     expect(
       schema().find((item) => item.name === 'idx_transactions_account_date'),
     ).toMatchObject({ tbl_name: 'transactions' });
     expect(mockReal.query('PRAGMA foreign_key_check')).toEqual([]);
+  });
+
+  it('from v4 keeps settings, accounts and transactions untouched and adds the anchor columns', async () => {
+    await seedV4();
+    const accountsBefore = mockReal.query<object>('SELECT * FROM accounts ORDER BY id');
+    const transactionsBefore = allTransactions();
+    expect(transactionsBefore).toEqual(VALID);
+
+    await initDb();
+
+    expect(userVersion()).toBe(5);
+    expect(accountColumns().map((column) => column.name)).toEqual([
+      'balance_anchor_cents',
+      'balance_anchor_at',
+    ]);
+    expect(await getSetting('language')).toBe('es');
+    expect(await getSetting('default_currency')).toBe('EUR');
+    expect(mockReal.query('SELECT * FROM accounts ORDER BY id')).toEqual(
+      accountsBefore.map((row) => ({ ...row, balance_anchor_cents: 0, balance_anchor_at: null })),
+    );
+    expectNoAnchors();
+    expect(allTransactions()).toEqual(transactionsBefore);
+    expect(mockReal.query('PRAGMA foreign_key_check')).toEqual([]);
+    expect(foreignKeys()).toBe(1);
+    // The anchor columns are usable and the cascade still works after the upgrade.
+    mockReal.exec(
+      "UPDATE accounts SET balance_anchor_cents = -500, balance_anchor_at = '2026-05-01T00:00:00.000Z' WHERE id = 1",
+    );
+    await mockReal.adapter.runAsync('DELETE FROM accounts WHERE id = ?', 1);
+    expect(allTransactions().map((row) => row.id)).toEqual([2, 6]);
+  });
+
+  it('a v4 database reached through the real service reads existing balances unchanged', async () => {
+    await seedV4();
+    await initDb();
+    const accounts = await listAccounts();
+    expect(accounts.map((item) => [item.balanceAnchorCents, item.balanceAnchorAt])).toEqual([
+      [0, null],
+      [0, null],
+    ]);
   });
 
   it('the rebuilt table still enforces its CHECK constraints', async () => {
@@ -266,12 +339,12 @@ describe('sqlite_sequence carry-over (ids are never reused)', () => {
 });
 
 describe('foreign keys', () => {
-  it('are ON after open on a fresh install, after an upgrade, and on an already-v4 database', async () => {
+  it('are ON after open on a fresh install, after an upgrade, and on an already-v5 database', async () => {
     expect(foreignKeys()).toBe(0);
     await initDb();
     expect(foreignKeys()).toBe(1);
 
-    // Already v4: no migration runs, and it is still turned ON.
+    // Already v5: no migration runs, and it is still turned ON.
     mockReal.exec('PRAGMA foreign_keys = OFF');
     mockReal.statements.length = 0;
     await reopen();
@@ -304,7 +377,7 @@ describe('foreign keys', () => {
   });
 });
 
-describe('a failed v3 to v4 upgrade changes nothing, and a retry succeeds', () => {
+describe('a failed upgrade from v3 changes nothing, and a retry succeeds', () => {
   const failures = [
     ['the copy', 'INSERT INTO transactions_new'],
     ['the drop', 'DROP TABLE transactions'],
@@ -344,7 +417,7 @@ describe('a failed v3 to v4 upgrade changes nothing, and a retry succeeds', () =
     mockReal.clearFailure();
     resetDbForTests();
     await initDb();
-    expect(userVersion()).toBe(4);
+    expect(userVersion()).toBe(5);
     expect(allTransactions()).toEqual(VALID);
     expect(foreignKeys()).toBe(1);
     expect(schema().some((item) => item.name === 'transactions_new')).toBe(false);
@@ -388,7 +461,7 @@ describe('a failed v3 to v4 upgrade changes nothing, and a retry succeeds', () =
     // Without the violation the same database upgrades.
     resetDbForTests();
     await initDb();
-    expect(userVersion()).toBe(4);
+    expect(userVersion()).toBe(5);
     expect(allTransactions()).toEqual(VALID);
   });
 
@@ -402,13 +475,136 @@ describe('a failed v3 to v4 upgrade changes nothing, and a retry succeeds', () =
 
   it('fails when writing the version, after the rebuild', async () => {
     await seedV3();
-    mockReal.failOn('PRAGMA user_version = 4');
+    mockReal.failOn('PRAGMA user_version = 5');
     await expect(initDb()).rejects.toThrow('Injected failure');
     expect(userVersion()).toBe(3);
     expect(
       schema().find((item) => item.name === 'transactions')?.sql,
     ).not.toContain('REFERENCES');
     expect(allTransactions()).toHaveLength(VALID.length + ORPHANS.length);
+  });
+});
+
+describe('a failed v4 to v5 upgrade changes nothing, and a retry succeeds', () => {
+  const failures = [
+    ['the first ADD COLUMN', 'ADD COLUMN balance_anchor_cents'],
+    ['the second ADD COLUMN', 'ADD COLUMN balance_anchor_at'],
+    ['writing the version', 'PRAGMA user_version = 5'],
+  ] as const;
+
+  it.each(failures)('fails at %s', async (_label, statement) => {
+    await seedV4();
+    const schemaBefore = schema();
+    const accountsBefore = mockReal.query('SELECT * FROM accounts ORDER BY id');
+    const rowsBefore = allTransactions();
+
+    mockReal.failOn(statement);
+    await expect(initDb()).rejects.toThrow('Injected failure');
+
+    // The statement was really reached, then everything was rolled back, even
+    // a column that had already been added.
+    expect(mockReal.statements.some((sql) => sql.includes(statement))).toBe(true);
+    expect(userVersion()).toBe(4);
+    expect(schema()).toEqual(schemaBefore);
+    expect(accountColumns()).toEqual([]);
+    expect(mockReal.query('SELECT * FROM accounts ORDER BY id')).toEqual(accountsBefore);
+    expect(allTransactions()).toEqual(rowsBefore);
+    expect(mockReal.query('SELECT key FROM settings ORDER BY key')).toEqual([
+      { key: 'default_currency' },
+      { key: 'language' },
+    ]);
+
+    // Retry without the failure.
+    mockReal.clearFailure();
+    resetDbForTests();
+    await initDb();
+    expect(userVersion()).toBe(5);
+    expect(accountColumns()).toHaveLength(2);
+    expectNoAnchors();
+    expect(allTransactions()).toEqual(rowsBefore);
+    expect(foreignKeys()).toBe(1);
+  });
+});
+
+describe('accounts through the real service (balance anchor)', () => {
+  const base = { name: 'Main', icon: 'bank', currency: 'USD' };
+
+  it('creates without an anchor for an empty or zero initial balance, with one otherwise', async () => {
+    await initDb();
+    const none = await createAccount(base);
+    const empty = await createAccount({ ...base, balance: '' });
+    const zero = await createAccount({ ...base, balance: '-0.00' });
+    const positive = await createAccount({ ...base, balance: '500' });
+    const negative = await createAccount({ ...base, balance: '-200,5' });
+
+    for (const account of [none, empty, zero]) {
+      expect(account).toMatchObject({ balanceAnchorCents: 0, balanceAnchorAt: null });
+    }
+    expect(positive).toMatchObject({ balanceAnchorCents: 50000, balanceAnchorAt: positive.createdAt });
+    expect(negative).toMatchObject({ balanceAnchorCents: -20050, balanceAnchorAt: negative.createdAt });
+    // And what was stored is what comes back.
+    expect(await listAccounts()).toEqual([none, empty, zero, positive, negative]);
+  });
+
+  it('update without a balance keeps the anchor; with one (even 0) re-anchors at now', async () => {
+    await initDb();
+    const created = await createAccount({ ...base, balance: '100' });
+    const renamed = await updateAccount(created.id, { ...base, name: 'Renamed' });
+    expect(renamed).toMatchObject({
+      name: 'Renamed',
+      balanceAnchorCents: 10000,
+      balanceAnchorAt: created.createdAt,
+    });
+
+    const now = new Date('2026-06-01T10:00:00.000Z');
+    const moved = await updateAccount(
+      created.id,
+      { ...base, balance: '-25.5' },
+      now,
+    );
+    expect(moved).toMatchObject({ balanceAnchorCents: -2550, balanceAnchorAt: now.toISOString() });
+
+    const later = new Date('2026-06-02T10:00:00.000Z');
+    const zeroed = await updateAccount(
+      created.id,
+      { ...base, balance: '0' },
+      later,
+    );
+    expect(zeroed).toMatchObject({ balanceAnchorCents: 0, balanceAnchorAt: later.toISOString() });
+  });
+});
+
+describe('changing an account currency is a relabel (real SQLite)', () => {
+  it('JPY and back to MXN leave every stored amount and the anchor identical, with no error', async () => {
+    await initDb();
+    const created = await createAccount({
+      name: 'Main',
+      icon: 'bank',
+      currency: 'MXN',
+      balance: '12.50',
+    });
+    await insertTx(tx(1, created.id, { kind: 'income', amount_cents: 777, date: '2999-01-01T00:00:00.000Z' }));
+    await insertTx(tx(2, created.id, { amount_cents: 1 }));
+    const accountBefore = mockReal.query('SELECT * FROM accounts WHERE id = ?', created.id);
+    const transactionsBefore = allTransactions();
+    expect(accountBefore).toMatchObject([
+      { balance_anchor_cents: 1250, balance_anchor_at: created.createdAt },
+    ]);
+
+    // The service call the form makes when only the currency changed: no balance.
+    const input = { name: 'Main', icon: 'bank' };
+    const asJpy = await updateAccount(created.id, { ...input, currency: 'JPY' });
+    expect(asJpy).toMatchObject({
+      currency: 'JPY',
+      balanceAnchorCents: 1250,
+      balanceAnchorAt: created.createdAt,
+    });
+    expect(allTransactions()).toEqual(transactionsBefore);
+
+    const backToMxn = await updateAccount(created.id, { ...input, currency: 'MXN' });
+    expect(backToMxn).toEqual(created);
+    expect(mockReal.query('SELECT * FROM accounts WHERE id = ?', created.id)).toEqual(accountBefore);
+    expect(allTransactions()).toEqual(transactionsBefore);
   });
 });
 

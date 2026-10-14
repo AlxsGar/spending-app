@@ -19,6 +19,8 @@ const make = (id: number, name: string, currency: 'USD' | 'JPY') => ({
   currency,
   inGlobalCap: true,
   createdAt: '2026-01-01T00:00:00.000Z',
+  balanceAnchorCents: 0,
+  balanceAnchorAt: null,
 });
 
 const accounts = [

@@ -1,4 +1,5 @@
 import { fireEvent, screen } from '@testing-library/react-native';
+import { StyleSheet } from 'react-native';
 
 import AccountsScreen from '@/app/(tabs)/accounts';
 import HomeScreen from '@/app/(tabs)/index';
@@ -9,7 +10,10 @@ import { listAccounts } from '@/services/accounts';
 import { listTransactions } from '@/services/transactions';
 import { useAccountsStore } from '@/stores/accounts-store';
 import { useTransactionsStore } from '@/stores/transactions-store';
-import { renderWithProviders } from '@/test/render';
+import { fakeAnimationTimers, renderWithProviders } from '@/test/render';
+import { colors } from '@/theme';
+
+fakeAnimationTimers();
 
 const mockPush = jest.fn();
 
@@ -36,6 +40,8 @@ const account = {
   currency: 'USD' as const,
   inGlobalCap: true,
   createdAt: '2026-01-01T00:00:00.000Z',
+  balanceAnchorCents: 0,
+  balanceAnchorAt: null,
 };
 
 // A higher id was recorded later. The date defaults to just before now
@@ -108,6 +114,35 @@ describe('tab screens', () => {
     ]);
     await renderWithProviders(<AccountsScreen />);
     expect(await screen.findByText('−$25.50')).toBeTruthy();
+  });
+
+  it('Accounts and Home count only transactions after the balance was set', async () => {
+    const anchor = new Date(Date.now() - 60_000).toISOString();
+    (listAccounts as jest.Mock).mockResolvedValue([
+      { ...account, balanceAnchorCents: 50000, balanceAnchorAt: anchor },
+    ]);
+    (listTransactions as jest.Mock).mockResolvedValue([
+      // Now: after the anchor, counts.
+      tx(1, 'expense', 2500, 'after', new Date().toISOString()),
+      // Dated before the anchor (even if recorded later): does not count.
+      tx(2, 'expense', 99999, 'before', new Date(Date.now() - 120_000).toISOString()),
+    ]);
+    await renderWithProviders(<AccountsScreen />);
+    expect(await screen.findByText('$475.00')).toBeTruthy();
+    expect(screen.queryByText('$-499.99')).toBeNull();
+
+    const home = await renderWithProviders(<HomeScreen />);
+    expect((await screen.findAllByText('$475.00')).length).toBeGreaterThan(0);
+    home.unmount();
+  });
+
+  it('Accounts shows a negative initial balance in red with a minus', async () => {
+    (listAccounts as jest.Mock).mockResolvedValue([
+      { ...account, balanceAnchorCents: -20000, balanceAnchorAt: '2026-01-01T00:00:00.000Z' },
+    ]);
+    await renderWithProviders(<AccountsScreen />);
+    const amount = await screen.findByText('−$200.00');
+    expect(StyleSheet.flatten(amount.props.style).color).toBe(colors.alert);
   });
 
   it('Home shows the three most recently RECORDED transactions, not the newest by date', async () => {

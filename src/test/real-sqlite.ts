@@ -148,10 +148,27 @@ const V3 = `CREATE TABLE transactions (
 );
 CREATE INDEX idx_transactions_account_date ON transactions (account_id, date)`;
 
-// Creates the schema of an older release (1, 2 or 3) and sets its user_version.
-export function seedSchema(db: RealSqlite, version: 1 | 2 | 3): void {
+// v4 rebuilt transactions with the foreign key; accounts is unchanged. It was
+// created as transactions_new and renamed, which is why SQLite stores its DDL
+// with a quoted name; the seed does the same to be identical to a real v4.
+const V4_TRANSACTIONS = `CREATE TABLE transactions_new (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  account_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+  kind TEXT NOT NULL CHECK (kind IN ('expense','income')),
+  amount_cents INTEGER NOT NULL CHECK (amount_cents > 0),
+  date TEXT NOT NULL,
+  note TEXT,
+  recurring_id INTEGER,
+  created_at TEXT NOT NULL
+);
+ALTER TABLE transactions_new RENAME TO transactions;
+CREATE INDEX idx_transactions_account_date ON transactions (account_id, date)`;
+
+// Creates the schema of an older release (1 to 4) and sets its user_version.
+export function seedSchema(db: RealSqlite, version: 1 | 2 | 3 | 4): void {
   db.exec(V1);
   if (version >= 2) db.exec(V2);
-  if (version >= 3) db.exec(V3);
+  if (version === 3) db.exec(V3);
+  if (version >= 4) db.exec(V4_TRANSACTIONS);
   db.exec(`PRAGMA user_version = ${version}`);
 }

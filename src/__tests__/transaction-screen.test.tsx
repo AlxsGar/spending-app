@@ -100,7 +100,7 @@ describe('new transaction screen', () => {
       icon: 'arrow-down',
       tone: 'negative',
       message: en.transactions.savedExpense,
-      amountText: '−$12.50',
+      detail: '−$12.50',
     });
   });
 
@@ -114,7 +114,7 @@ describe('new transaction screen', () => {
       icon: 'arrow-up',
       tone: 'positive',
       message: en.transactions.savedIncome,
-      amountText: '+$100.00',
+      detail: '+$100.00',
     });
   });
 
@@ -202,6 +202,17 @@ describe('new transaction screen', () => {
     } finally {
       jest.useRealTimers();
     }
+  });
+
+  it('still rejects a negative amount and keeps the decimal keypad', async () => {
+    (createTransaction as jest.Mock).mockClear();
+    await renderWithProviders(<NewTransactionScreen />);
+    const field = await screen.findByLabelText(en.transactions.amountLabel);
+    expect(field.props.keyboardType).toBe('decimal-pad');
+    fireEvent.changeText(field, '-5');
+    fireEvent.press(screen.getByText(en.transactions.save));
+    expect(await screen.findByText(en.transactions.errors.amountNotPositive)).toBeTruthy();
+    expect(createTransaction).not.toHaveBeenCalled();
   });
 
   it('asks to create an account first when there are none', async () => {

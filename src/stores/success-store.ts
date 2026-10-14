@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 
-export type SuccessTone = 'positive' | 'negative';
+// neutral renders in the normal text color (saves that are not money).
+export type SuccessTone = 'positive' | 'negative' | 'neutral';
 
 export type SuccessFeedback = {
   // Paper icon name.
@@ -8,8 +9,9 @@ export type SuccessFeedback = {
   tone: SuccessTone;
   // Already translated.
   message: string;
-  // Already formatted, optional.
-  amountText?: string;
+  // Optional second line, already formatted or translated: a signed amount,
+  // an account name.
+  detail?: string;
 };
 
 type Shown = SuccessFeedback & { id: number };

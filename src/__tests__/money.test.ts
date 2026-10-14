@@ -123,6 +123,29 @@ describe('parseAmountToCents', () => {
   });
 });
 
+describe('parseAmountToCents with allowZero', () => {
+  it('accepts zero in every spelling, and rejects it by default', () => {
+    for (const text of ['0', '0.00', '0,0', '000']) {
+      expect(parseAmountToCents(text, 'USD', { allowZero: true })).toEqual({ ok: true, cents: 0 });
+      expect(parseAmountToCents(text, 'USD')).toEqual({ ok: false, code: 'notPositive' });
+    }
+  });
+
+  it('keeps every other rule: no sign, no JPY decimals, the maximum', () => {
+    const options = { allowZero: true };
+    expect(parseAmountToCents('-0', 'USD', options)).toEqual({ ok: false, code: 'notPositive' });
+    expect(parseAmountToCents('0.5', 'JPY', options)).toEqual({
+      ok: false,
+      code: 'decimalsNotAllowed',
+    });
+    expect(parseAmountToCents('1000000000', 'USD', options)).toEqual({
+      ok: false,
+      code: 'tooLarge',
+    });
+    expect(parseAmountToCents('12.5', 'USD', options)).toEqual({ ok: true, cents: 1250 });
+  });
+});
+
 describe('formatSignedMoney', () => {
   it('uses a real minus for negatives and an optional plus', () => {
     expect(formatSignedMoney(-2550, 'USD')).toBe('−$25.50');
