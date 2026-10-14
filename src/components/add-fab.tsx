@@ -1,4 +1,4 @@
-import { useIsFocused } from 'expo-router';
+import { useIsFocused, useRouter } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 
 import { Fab } from '@/components/ui';
@@ -8,6 +8,7 @@ const noop = () => {};
 export function AddFab() {
   const { t } = useTranslation();
   const focused = useIsFocused();
+  const router = useRouter();
 
   return (
     <Fab
@@ -16,7 +17,12 @@ export function AddFab() {
       actions={[
         { key: 'transaction', label: t('fab.addTransaction'), icon: 'cash-plus', onPress: noop },
         { key: 'recurring', label: t('fab.addRecurring'), icon: 'calendar-sync', onPress: noop },
-        { key: 'account', label: t('fab.addAccount'), icon: 'bank-plus', onPress: noop },
+        {
+          key: 'account',
+          label: t('fab.addAccount'),
+          icon: 'bank-plus',
+          onPress: () => router.push('/account/new'),
+        },
       ]}
     />
   );

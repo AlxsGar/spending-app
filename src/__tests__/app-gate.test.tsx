@@ -14,7 +14,13 @@ jest.mock('@/services/language', () => ({
 
 jest.mock('expo-router', () => {
   const { Text: MockText } = jest.requireActual('react-native');
-  return { Slot: () => <MockText>app ready</MockText> };
+  function MockStack() {
+    return <MockText>app ready</MockText>;
+  }
+  MockStack.Screen = function MockStackScreen() {
+    return null;
+  };
+  return { Stack: MockStack };
 });
 
 describe('AppGate', () => {

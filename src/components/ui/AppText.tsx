@@ -10,6 +10,8 @@ type Props = {
   variant?: TypographyVariant;
   color?: ColorToken;
   align?: 'left' | 'center' | 'right';
+  numberOfLines?: number;
+  maxFontSizeMultiplier?: number;
   style?: StyleProp<TextStyle>;
 };
 
@@ -18,10 +20,17 @@ export function AppText({
   variant = 'body',
   color = 'text',
   align = 'left',
+  numberOfLines,
+  maxFontSizeMultiplier,
   style,
 }: Props) {
   return (
-    <Text style={[typography[variant], { color: colors[color], textAlign: align }, style]}>
+    <Text
+      numberOfLines={numberOfLines}
+      ellipsizeMode="tail"
+      maxFontSizeMultiplier={maxFontSizeMultiplier}
+      style={[typography[variant], { color: colors[color], textAlign: align }, style]}
+    >
       {children}
     </Text>
   );

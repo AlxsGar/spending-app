@@ -1,9 +1,10 @@
-import { Slot } from 'expo-router';
+import { Stack } from 'expo-router';
 import { useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { ErrorState, LoadingState, Screen } from '@/components/ui';
 import { useLanguageStore } from '@/stores/language-store';
+import { colors } from '@/theme';
 
 export function AppGate() {
   const { t } = useTranslation();
@@ -27,5 +28,18 @@ export function AppGate() {
       </Screen>
     );
   }
-  return <Slot />;
+  // Tabs are the root; account screens are stack routes pushed above them.
+  return (
+    <Stack
+      screenOptions={{
+        headerStyle: { backgroundColor: colors.background },
+        headerTintColor: colors.text,
+        headerShadowVisible: false,
+        headerBackButtonDisplayMode: 'minimal',
+        contentStyle: { backgroundColor: colors.background },
+      }}
+    >
+      <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+    </Stack>
+  );
 }

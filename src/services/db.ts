@@ -1,7 +1,7 @@
 import * as SQLite from 'expo-sqlite';
 
 const DB_NAME = 'spending.db';
-const SCHEMA_VERSION = 1;
+const SCHEMA_VERSION = 2;
 
 let dbPromise: Promise<SQLite.SQLiteDatabase> | null = null;
 
@@ -9,14 +9,28 @@ async function migrate(db: SQLite.SQLiteDatabase): Promise<void> {
   const row = await db.getFirstAsync<{ user_version: number }>('PRAGMA user_version');
   const current = row?.user_version ?? 0;
 
-  if (current < 1) {
-    await db.withTransactionAsync(async () => {
+  if (current >= SCHEMA_VERSION) return;
+
+  await db.withTransactionAsync(async () => {
+    if (current < 1) {
       await db.execAsync(
         'CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT)',
       );
-      await db.execAsync(`PRAGMA user_version = ${SCHEMA_VERSION}`);
-    });
-  }
+    }
+    if (current < 2) {
+      await db.execAsync(
+        `CREATE TABLE IF NOT EXISTS accounts (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          name TEXT NOT NULL,
+          icon TEXT NOT NULL,
+          currency TEXT NOT NULL,
+          in_global_cap INTEGER NOT NULL DEFAULT 1,
+          created_at TEXT NOT NULL
+        )`,
+      );
+    }
+    await db.execAsync(`PRAGMA user_version = ${SCHEMA_VERSION}`);
+  });
 }
 
 async function open(): Promise<SQLite.SQLiteDatabase> {

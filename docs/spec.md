@@ -24,7 +24,10 @@ v1 is dark theme only.
   card, piggy bank, home, and similar). There is no account "type"; the
   icon and name carry the meaning.
 - `currency` - ISO 4217 code (MXN, USD, CAD, EUR, ...). A label, not a
-  conversion. Totals never mix currencies.
+  conversion. Totals never mix currencies. The currency can always be
+  changed on edit; changing it relabels existing amounts and nothing is
+  recalculated. From the transactions slice on, changing the currency of an
+  account that already has transactions asks for confirmation first.
 - `in_global_cap` - boolean. Whether this account's expenses count toward
   the global soft cap.
 - `created_at`

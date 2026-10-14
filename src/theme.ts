@@ -23,11 +23,28 @@ export const spacing = {
 
 export const radius = 12;
 
+export const borderWidth = 2;
+
 export const sizes = {
   touchTarget: 48,
   fab: 56,
   icon: 24,
+  iconLarge: 40,
+  accountCard: 160,
+  accountCardHeight: 176,
+  dialogList: 320,
 } as const;
+
+// Fixed-size elements grow with the system font scale, up to these caps. Text
+// inside them is capped at the same multiplier so it never outgrows the box.
+export const fontScaleLimits = {
+  maxHeight: 2,
+  maxWidth: 1.25,
+} as const;
+
+export function scaleSize(base: number, fontScale: number, max: number): number {
+  return Math.round(base * Math.min(Math.max(fontScale, 1), max));
+}
 
 export const typography = {
   caption: { fontSize: 12, lineHeight: 16, fontWeight: '400' },
