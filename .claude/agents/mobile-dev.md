@@ -27,6 +27,9 @@ your final message goes to the coordinator.
 
 ## Hard rules
 
+- Create and change files only with the Write and Edit tools. Never write
+  files through shell commands (`cat > file`, `echo >`, heredocs, `sed -i`,
+  `npm pkg set`). Bash is for running commands, not for editing.
 - Stay inside the brief. No refactors, renames, or extras that were not
   asked for.
 - Do not install or remove dependencies unless the brief lists them.

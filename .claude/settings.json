@@ -1,5 +1,7 @@
 {
+  "agent": "coordinator",
   "permissions": {
+    "defaultMode": "default",
     "allow": [
       "Bash(npm run typecheck)",
       "Bash(npm run typecheck *)",
@@ -22,6 +24,12 @@
       "Bash(git add *)",
       "Bash(git commit *)"
     ],
+    "ask": [
+      "Agent(mobile-dev)",
+      "Bash(npm install *)",
+      "Bash(npx expo install *)",
+      "Bash(git merge *)"
+    ],
     "deny": [
       "Bash(git push *)",
       "Bash(git reset --hard *)",
@@ -32,16 +40,13 @@
       "Bash(npx eas *)",
       "Read(./.env)",
       "Read(./.env.*)",
+      "Read(./credentials)",
+      "Read(./credentials/**)",
+      "Edit(./credentials/**)",
+      "Write(./credentials/**)",
       "Edit(./.claude/settings.json)",
       "Edit(./.claude/hooks/**)"
-    ],
-    "ask": [
-      "Agent(mobile-dev)",
-      "Bash(npm install *)",
-      "Bash(npx expo install *)",
-      "Bash(git merge *)"
-    ],
-    "defaultMode": "default"
+    ]
   },
   "hooks": {
     "PreToolUse": [
@@ -75,9 +80,5 @@
         ]
       }
     ]
-  },
-  "agent": "coordinator",
-  "enabledPlugins": {
-    "typescript-lsp@claude-plugins-official": true
   }
 }
