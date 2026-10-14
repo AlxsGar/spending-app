@@ -8,6 +8,30 @@ description: UI and visual conventions for this app. Use when building, changing
 The goal is an app that looks designed on purpose: calm, consistent, and
 easy to scan. Generic defaults are the failure mode.
 
+## Palette
+
+The app is dark-first. These are the only colors in `src/theme.ts`; every
+other value is derived from them (opacity, not new hex codes).
+
+| Token | Value | Use |
+|---|---|---|
+| `background` | `#1A1A1A` | Screen background |
+| `surface` | `#262626` | Cards, sheets, inputs |
+| `accent` | `#10B981` | Primary actions, income, positive change |
+| `accentSecondary` | `#06B6D4` | Links, selected tabs, informational highlights |
+| `text` | `#FFFFFF` | Primary text |
+| `textSecondary` | `#9CA3AF` | Labels, metadata, placeholders |
+| `alert` | `#EF4444` | Expenses, warnings, destructive actions |
+
+Rules:
+
+- Income and positive balances use `accent`. Expenses and overdue items use
+  `alert`. Nothing else uses those two colors.
+- `accentSecondary` never marks money; it marks navigation and selection.
+- Dividers and borders are `text` at 8 to 12 percent opacity, never a new
+  gray.
+- Disabled states are the normal color at 40 percent opacity.
+
 ## Structure
 
 - All visual values come from `src/theme.ts`: colors, type scale, spacing,
@@ -22,28 +46,31 @@ easy to scan. Generic defaults are the failure mode.
 - Spacing uses the theme scale only: 4, 8, 12, 16, 24, 32.
 - Screen horizontal padding is 16. Vertical gap between sections is 24,
   between related items 8 or 12.
+- Cards use `surface` on `background` with radius 12 and no border.
 - One primary action per screen. Secondary actions are visually quieter.
 - Touch targets are at least 48 by 48.
+- The FAB sits bottom-right, above the tab bar, and uses `accent`.
 
 ## Typography
 
 - At most three text sizes on one screen.
-- Amounts use `AmountText`: tabular numbers, right-aligned in lists.
+- Amounts use `AmountText`: tabular numbers, right-aligned in lists, with
+  the currency code or symbol from the account, never hardcoded.
 - Use weight and size for hierarchy before reaching for color.
 
 ## Color
 
-- Color carries meaning, not decoration. Expense, income, and warning each
-  have one theme color, and nothing else uses them.
-- Never show meaning by color alone. Pair it with a sign, icon, or label.
-- Both light and dark themes must work. Never hardcode white or black.
+- Color carries meaning, not decoration.
+- Never show meaning by color alone. Expenses also carry a minus sign or
+  icon; overdue items also carry a label.
+- Never hardcode white or black in a component. Use the tokens.
 
 ## Content
 
 - Every string goes through i18next, with keys in both `en` and `es`.
   Spanish strings run longer; layouts must not break.
-- Money is formatted by one helper from integer cents, using the device
-  locale.
+- Money is formatted by one helper from integer cents, using the account's
+  currency and the device locale.
 - Labels are short and specific: "Add expense", not "Submit".
 
 ## States
@@ -56,5 +83,5 @@ action that fills it.
 
 - No gradients, drop shadows beyond Paper elevation, or decorative icons.
 - No emoji in the interface.
-- No more than one accent color on a screen.
+- No colors outside the palette.
 - No modal on top of a modal.
