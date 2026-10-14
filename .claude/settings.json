@@ -43,7 +43,6 @@
       "Read(./credentials)",
       "Read(./credentials/**)",
       "Edit(./credentials/**)",
-      "Write(./credentials/**)",
       "Edit(./.claude/settings.json)",
       "Edit(./.claude/hooks/**)"
     ]
