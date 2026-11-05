@@ -12,8 +12,19 @@
  */
 import { getSetting, initDb, resetDbForTests } from '@/services/db';
 import { createAccount, listAccounts, removeAccount, updateAccount } from '@/services/accounts';
+import {
+  createRecurring,
+  getRecurring,
+  listRecurring,
+  removeRecurring,
+  updateRecurring,
+} from '@/services/recurring';
 import { createRealSqlite, seedSchema } from '@/test/real-sqlite';
 import type { RealSqlite } from '@/test/real-sqlite';
+import { silenceConsoleError } from '@/test/console-error';
+
+// Failed upgrades log "[db] open/migrate failed:" before rethrowing.
+const consoleError = silenceConsoleError();
 
 let mockReal: RealSqlite;
 
@@ -76,6 +87,9 @@ const VALID: TxRow[] = [
 ];
 // Their accounts do not exist.
 const ORPHANS: TxRow[] = [tx(3, 9), tx(5, 8, { note: 'gone' })];
+// The v6 upgrade clears a recurring_id that points at no recurring payment
+// (none can exist before v6); every other column is untouched.
+const VALID_AFTER_V6: TxRow[] = VALID.map((row) => ({ ...row, recurring_id: null }));
 
 const userVersion = () => mockReal.query<{ user_version: number }>('PRAGMA user_version')[0].user_version;
 const foreignKeys = () => mockReal.query<{ foreign_keys: number }>('PRAGMA foreign_keys')[0].foreign_keys;
@@ -125,6 +139,41 @@ const seedV4 = async (rows: TxRow[] = VALID) => {
   for (const row of rows) await insertTx(row);
 };
 
+const seedV5 = async (rows: TxRow[] = VALID) => {
+  seedSchema(mockReal, 5);
+  mockReal.exec("INSERT INTO settings (key, value) VALUES ('language', 'es'), ('default_currency', 'EUR')");
+  insertAccounts();
+  mockReal.exec(
+    "UPDATE accounts SET balance_anchor_cents = -500, balance_anchor_at = '2026-05-01T00:00:00.000Z' WHERE id = 1",
+  );
+  for (const row of rows) await insertTx(row);
+};
+
+const RECURRING_SQL =
+  "INSERT INTO recurring_payments (id, account_id, name, amount_cents, note, interval, unit, start_date, created_at) VALUES (?, ?, ?, ?, ?, 2, 'week', '2026-06-15', '2026-06-01T00:00:00.000Z')";
+const insertRecurring = (id: number, accountId: number, name = `Rent ${id}`) =>
+  mockReal.adapter.runAsync(RECURRING_SQL, id, accountId, name, 1000 + id, null);
+// A recurring payment with chosen schedule columns (no id, account 1).
+const insertSchedule = (
+  interval: number,
+  unit: string,
+  startDate: string,
+  endDate: string | null,
+) =>
+  mockReal.adapter.runAsync(
+    "INSERT INTO recurring_payments (account_id, name, amount_cents, interval, unit, start_date, end_date, created_at) VALUES (1, 'x', 1, ?, ?, ?, ?, 'c')",
+    interval,
+    unit,
+    startDate,
+    endDate,
+  );
+const recurringColumns = () =>
+  mockReal
+    .query<{ name: string; type: string; notnull: number; dflt_value: string | null }>(
+      'PRAGMA table_info(recurring_payments)',
+    )
+    .map(({ name, type, notnull, dflt_value }) => ({ name, type, notnull, dflt_value }));
+
 // Existing accounts get no anchor, so their balances do not change.
 const expectNoAnchors = () =>
   expect(
@@ -145,9 +194,40 @@ afterEach(() => {
 });
 
 describe('fresh install', () => {
-  it('ends at v5 with the balance anchor columns, the foreign key in the transactions DDL and the index', async () => {
+  it('ends at v6 with the recurring table, the anchor columns, the foreign keys in the transactions DDL and the indexes', async () => {
     await initDb();
-    expect(userVersion()).toBe(5);
+    expect(userVersion()).toBe(6);
+    expect(recurringColumns()).toEqual([
+      { name: 'id', type: 'INTEGER', notnull: 0, dflt_value: null },
+      // Nullable: a recurring payment may have no account.
+      { name: 'account_id', type: 'INTEGER', notnull: 0, dflt_value: null },
+      { name: 'name', type: 'TEXT', notnull: 1, dflt_value: null },
+      { name: 'amount_cents', type: 'INTEGER', notnull: 1, dflt_value: null },
+      { name: 'note', type: 'TEXT', notnull: 0, dflt_value: null },
+      { name: 'interval', type: 'INTEGER', notnull: 1, dflt_value: null },
+      { name: 'unit', type: 'TEXT', notnull: 1, dflt_value: null },
+      { name: 'start_date', type: 'TEXT', notnull: 1, dflt_value: null },
+      { name: 'end_date', type: 'TEXT', notnull: 0, dflt_value: null },
+      { name: 'notify_days_before', type: 'TEXT', notnull: 1, dflt_value: "''" },
+      { name: 'active', type: 'INTEGER', notnull: 1, dflt_value: '1' },
+      { name: 'last_confirmed_at', type: 'TEXT', notnull: 0, dflt_value: null },
+      { name: 'created_at', type: 'TEXT', notnull: 1, dflt_value: null },
+    ]);
+    const recurring = schema().find((item) => item.name === 'recurring_payments');
+    expect(recurring?.sql).toContain('AUTOINCREMENT');
+    expect(recurring?.sql).toContain('REFERENCES accounts(id) ON DELETE CASCADE');
+    expect(recurring?.sql).toContain('CHECK (amount_cents > 0)');
+    expect(recurring?.sql).toContain('CHECK (interval >= 1)');
+    expect(recurring?.sql).toContain("CHECK (unit IN ('day','week','month','year'))");
+    expect(recurring?.sql).toContain('CHECK (end_date IS NULL OR end_date >= start_date)');
+    expect(recurring?.sql).not.toMatch(/day_of_month|start_period|last_confirmed_period/);
+    expect(schema().find((item) => item.name === 'idx_recurring_payments_account')).toMatchObject({
+      type: 'index',
+      tbl_name: 'recurring_payments',
+    });
+    expect(
+      schema().find((item) => item.name === 'transactions')?.sql,
+    ).toContain('recurring_id INTEGER REFERENCES recurring_payments(id) ON DELETE SET NULL');
     expect(accountColumns()).toEqual([
       { name: 'balance_anchor_cents', type: 'INTEGER', notnull: 1, dflt_value: '0' },
       { name: 'balance_anchor_at', type: 'TEXT', notnull: 0, dflt_value: null },
@@ -167,18 +247,18 @@ describe('fresh install', () => {
   });
 });
 
-describe('upgrades end at v5 with an identical schema', () => {
-  it('from v1, v2, v3 and v4 the schema equals a fresh install', async () => {
+describe('upgrades end at v6 with an identical schema', () => {
+  it('from v1, v2, v3, v4 and v5 the schema equals a fresh install', async () => {
     await initDb();
     const fresh = schema();
     mockReal.close();
 
-    for (const version of [1, 2, 3, 4] as const) {
+    for (const version of [1, 2, 3, 4, 5] as const) {
       mockReal = createRealSqlite();
       resetDbForTests();
       seedSchema(mockReal, version);
       await initDb();
-      expect(userVersion()).toBe(5);
+      expect(userVersion()).toBe(6);
       expect(schema()).toEqual(fresh);
       mockReal.close();
     }
@@ -190,7 +270,7 @@ describe('upgrades end at v5 with an identical schema', () => {
     seedSchema(mockReal, 1);
     mockReal.exec("INSERT INTO settings (key, value) VALUES ('language', 'es')");
     await initDb();
-    expect(userVersion()).toBe(5);
+    expect(userVersion()).toBe(6);
     expect(await getSetting('language')).toBe('es');
     expect(allTransactions()).toEqual([]);
   });
@@ -200,7 +280,7 @@ describe('upgrades end at v5 with an identical schema', () => {
     mockReal.exec("INSERT INTO settings (key, value) VALUES ('language', 'es')");
     insertAccounts();
     await initDb();
-    expect(userVersion()).toBe(5);
+    expect(userVersion()).toBe(6);
     expect(await getSetting('language')).toBe('es');
     expect(mockReal.query('SELECT id, name, in_global_cap FROM accounts ORDER BY id')).toEqual([
       { id: 1, name: 'Checking', in_global_cap: 1 },
@@ -216,7 +296,7 @@ describe('upgrades end at v5 with an identical schema', () => {
 
     await initDb();
 
-    expect(userVersion()).toBe(5);
+    expect(userVersion()).toBe(6);
     expect(await getSetting('language')).toBe('es');
     expect(await getSetting('default_currency')).toBe('EUR');
     // Every old column is unchanged; the two new ones have their defaults.
@@ -224,7 +304,7 @@ describe('upgrades end at v5 with an identical schema', () => {
       accountsBefore.map((row) => ({ ...row, balance_anchor_cents: 0, balance_anchor_at: null })),
     );
     expectNoAnchors();
-    expect(allTransactions()).toEqual(VALID);
+    expect(allTransactions()).toEqual(VALID_AFTER_V6);
     expect(schema().some((item) => item.name === 'transactions_new')).toBe(false);
     expect(
       schema().find((item) => item.name === 'idx_transactions_account_date'),
@@ -240,7 +320,7 @@ describe('upgrades end at v5 with an identical schema', () => {
 
     await initDb();
 
-    expect(userVersion()).toBe(5);
+    expect(userVersion()).toBe(6);
     expect(accountColumns().map((column) => column.name)).toEqual([
       'balance_anchor_cents',
       'balance_anchor_at',
@@ -251,7 +331,7 @@ describe('upgrades end at v5 with an identical schema', () => {
       accountsBefore.map((row) => ({ ...row, balance_anchor_cents: 0, balance_anchor_at: null })),
     );
     expectNoAnchors();
-    expect(allTransactions()).toEqual(transactionsBefore);
+    expect(allTransactions()).toEqual(VALID_AFTER_V6);
     expect(mockReal.query('PRAGMA foreign_key_check')).toEqual([]);
     expect(foreignKeys()).toBe(1);
     // The anchor columns are usable and the cascade still works after the upgrade.
@@ -339,12 +419,12 @@ describe('sqlite_sequence carry-over (ids are never reused)', () => {
 });
 
 describe('foreign keys', () => {
-  it('are ON after open on a fresh install, after an upgrade, and on an already-v5 database', async () => {
+  it('are ON after open on a fresh install, after an upgrade, and on an already-v6 database', async () => {
     expect(foreignKeys()).toBe(0);
     await initDb();
     expect(foreignKeys()).toBe(1);
 
-    // Already v5: no migration runs, and it is still turned ON.
+    // Already v6: no migration runs, and it is still turned ON.
     mockReal.exec('PRAGMA foreign_keys = OFF');
     mockReal.statements.length = 0;
     await reopen();
@@ -417,8 +497,8 @@ describe('a failed upgrade from v3 changes nothing, and a retry succeeds', () =>
     mockReal.clearFailure();
     resetDbForTests();
     await initDb();
-    expect(userVersion()).toBe(5);
-    expect(allTransactions()).toEqual(VALID);
+    expect(userVersion()).toBe(6);
+    expect(allTransactions()).toEqual(VALID_AFTER_V6);
     expect(foreignKeys()).toBe(1);
     expect(schema().some((item) => item.name === 'transactions_new')).toBe(false);
   });
@@ -461,8 +541,8 @@ describe('a failed upgrade from v3 changes nothing, and a retry succeeds', () =>
     // Without the violation the same database upgrades.
     resetDbForTests();
     await initDb();
-    expect(userVersion()).toBe(5);
-    expect(allTransactions()).toEqual(VALID);
+    expect(userVersion()).toBe(6);
+    expect(allTransactions()).toEqual(VALID_AFTER_V6);
   });
 
   it('fails at the orphan cleanup', async () => {
@@ -475,7 +555,7 @@ describe('a failed upgrade from v3 changes nothing, and a retry succeeds', () =>
 
   it('fails when writing the version, after the rebuild', async () => {
     await seedV3();
-    mockReal.failOn('PRAGMA user_version = 5');
+    mockReal.failOn('PRAGMA user_version = 6');
     await expect(initDb()).rejects.toThrow('Injected failure');
     expect(userVersion()).toBe(3);
     expect(
@@ -485,11 +565,13 @@ describe('a failed upgrade from v3 changes nothing, and a retry succeeds', () =>
   });
 });
 
-describe('a failed v4 to v5 upgrade changes nothing, and a retry succeeds', () => {
+// Seeded at v4, so these fail inside the v5 step (the two ADD COLUMNs) or at the
+// very end (the v6 version write): a column already added must be undone too.
+describe('a failed upgrade from v4 changes nothing, and a retry succeeds', () => {
   const failures = [
     ['the first ADD COLUMN', 'ADD COLUMN balance_anchor_cents'],
     ['the second ADD COLUMN', 'ADD COLUMN balance_anchor_at'],
-    ['writing the version', 'PRAGMA user_version = 5'],
+    ['writing the version', 'PRAGMA user_version = 6'],
   ] as const;
 
   it.each(failures)('fails at %s', async (_label, statement) => {
@@ -518,11 +600,448 @@ describe('a failed v4 to v5 upgrade changes nothing, and a retry succeeds', () =
     mockReal.clearFailure();
     resetDbForTests();
     await initDb();
-    expect(userVersion()).toBe(5);
+    expect(userVersion()).toBe(6);
     expect(accountColumns()).toHaveLength(2);
     expectNoAnchors();
-    expect(allTransactions()).toEqual(rowsBefore);
+    expect(allTransactions()).toEqual(VALID_AFTER_V6);
     expect(foreignKeys()).toBe(1);
+  });
+});
+
+describe('diagnostic logging', () => {
+  it('a failed upgrade logs "[db] open/migrate failed:" with the error, then rejects as before', async () => {
+    await seedV5();
+    mockReal.failOn('CREATE TABLE recurring_payments');
+    await expect(initDb()).rejects.toThrow('Injected failure');
+    expect(consoleError()).toHaveBeenCalledTimes(1);
+    expect(consoleError()).toHaveBeenCalledWith(
+      '[db] open/migrate failed:',
+      expect.objectContaining({ name: 'InjectedFailure' }),
+    );
+    // Still retried on the next call (the cached rejection is reset).
+    mockReal.clearFailure();
+    await initDb();
+    expect(userVersion()).toBe(6);
+    expect(consoleError()).toHaveBeenCalledTimes(1);
+  });
+
+  it('a successful open logs nothing', async () => {
+    await initDb();
+    expect(consoleError()).not.toHaveBeenCalled();
+  });
+});
+
+describe('upgrade from v5 (recurring payments)', () => {
+  it('keeps settings, accounts with their anchors and transactions; clears a dangling recurring_id', async () => {
+    await seedV5();
+    const accountsBefore = mockReal.query('SELECT * FROM accounts ORDER BY id');
+    expect(accountsBefore[0]).toMatchObject({ balance_anchor_cents: -500 });
+    // Transaction 2 points at recurring payment 7, which cannot exist yet.
+    expect(allTransactions().find((row) => row.id === 2)?.recurring_id).toBe(7);
+
+    await initDb();
+
+    expect(userVersion()).toBe(6);
+    expect(await getSetting('language')).toBe('es');
+    expect(await getSetting('default_currency')).toBe('EUR');
+    expect(mockReal.query('SELECT * FROM accounts ORDER BY id')).toEqual(accountsBefore);
+    expect(allTransactions()).toEqual(VALID_AFTER_V6);
+    expect(mockReal.query('SELECT * FROM recurring_payments')).toEqual([]);
+    expect(schema().some((item) => item.name === 'transactions_new')).toBe(false);
+    expect(
+      schema().find((item) => item.name === 'idx_transactions_account_date'),
+    ).toMatchObject({ tbl_name: 'transactions' });
+    expect(mockReal.query('PRAGMA foreign_key_check')).toEqual([]);
+    expect(foreignKeys()).toBe(1);
+  });
+
+  it('keeps the transactions counter: ids are never reused', async () => {
+    await seedV5([tx(1, 1), tx(2, 1), tx(3, 1), tx(4, 1), tx(5, 1)]);
+    mockReal.exec('DELETE FROM transactions WHERE id IN (4, 5)');
+    expect(sequence('transactions')).toEqual([{ seq: 5 }]);
+
+    await initDb();
+
+    expect(allTransactions().map((row) => row.id)).toEqual([1, 2, 3]);
+    expect(sequence('transactions')).toEqual([{ seq: 5 }]);
+    expect(sequence('transactions_new')).toEqual([]);
+    expect(await insertNew()).toBe(6);
+  });
+
+  it('an empty transactions table that once had rows keeps its counter', async () => {
+    await seedV5([tx(1, 1), tx(2, 1), tx(3, 1)]);
+    mockReal.exec('DELETE FROM transactions');
+    await initDb();
+    expect(allTransactions()).toEqual([]);
+    expect(sequence('transactions')).toEqual([{ seq: 3 }]);
+    expect(await insertNew()).toBe(4);
+  });
+
+  it('deleting a recurring payment keeps its transactions and sets their recurring_id to NULL', async () => {
+    await seedV5([tx(1, 1), tx(2, 1), tx(3, 2)]);
+    await initDb();
+    await insertRecurring(1, 1);
+    await insertRecurring(2, 2);
+    mockReal.exec('UPDATE transactions SET recurring_id = 1 WHERE id IN (1, 2)');
+    mockReal.exec('UPDATE transactions SET recurring_id = 2 WHERE id = 3');
+    const before = allTransactions();
+
+    await mockReal.adapter.runAsync('DELETE FROM recurring_payments WHERE id = ?', 1);
+
+    expect(mockReal.query('SELECT id FROM recurring_payments')).toEqual([{ id: 2 }]);
+    expect(allTransactions()).toEqual([
+      { ...before[0], recurring_id: null },
+      { ...before[1], recurring_id: null },
+      before[2],
+    ]);
+  });
+
+  it('deleting an account cascades to its recurring payments and transactions, and only those', async () => {
+    await seedV5([tx(1, 1), tx(2, 2), tx(3, 1), tx(4, 2)]);
+    await initDb();
+    await insertRecurring(1, 1);
+    await insertRecurring(2, 2);
+    await insertRecurring(3, 1);
+    mockReal.exec('UPDATE transactions SET recurring_id = 2 WHERE id = 4');
+
+    await mockReal.adapter.runAsync('DELETE FROM accounts WHERE id = ?', 1);
+
+    expect(mockReal.query('SELECT id FROM recurring_payments')).toEqual([{ id: 2 }]);
+    expect(allTransactions().map((row) => [row.id, row.recurring_id])).toEqual([
+      [2, null],
+      [4, 2],
+    ]);
+  });
+
+  it('allows a recurring payment with a NULL account; deleting an account leaves it alone', async () => {
+    await seedV5([tx(1, 1), tx(2, 2)]);
+    await initDb();
+    await mockReal.adapter.runAsync(
+      "INSERT INTO recurring_payments (id, account_id, name, amount_cents, interval, unit, start_date, created_at) VALUES (1, NULL, 'Loose', 500, 1, 'month', '2026-06-15', 'c')",
+    );
+    await insertRecurring(2, 1);
+    await insertRecurring(3, 2);
+    await insertRecurring(4, 1);
+    // A transaction can link to an unassigned payment too.
+    mockReal.exec('UPDATE transactions SET recurring_id = 1 WHERE id = 2');
+    expect(mockReal.query('PRAGMA foreign_key_check')).toEqual([]);
+
+    await mockReal.adapter.runAsync('DELETE FROM accounts WHERE id = ?', 1);
+
+    // Only account 1's payments went; the unassigned and account 2's stay.
+    expect(mockReal.query('SELECT id, account_id FROM recurring_payments ORDER BY id')).toEqual([
+      { id: 1, account_id: null },
+      { id: 3, account_id: 2 },
+    ]);
+    expect(allTransactions().map((row) => [row.id, row.recurring_id])).toEqual([[2, 1]]);
+
+    // Deleting the unassigned payment unlinks its transaction, as for any payment.
+    await mockReal.adapter.runAsync('DELETE FROM recurring_payments WHERE id = ?', 1);
+    expect(allTransactions().map((row) => [row.id, row.recurring_id])).toEqual([[2, null]]);
+  });
+
+  it('enforces the foreign keys and CHECKs of the new table and column', async () => {
+    await seedV5();
+    await initDb();
+    await expect(insertRecurring(1, 99)).rejects.toThrow(/FOREIGN KEY constraint failed/);
+    await expect(
+      mockReal.adapter.runAsync(
+        "INSERT INTO transactions (account_id, kind, amount_cents, date, recurring_id, created_at) VALUES (1, 'expense', 5, 'd', 42, 'c')",
+      ),
+    ).rejects.toThrow(/FOREIGN KEY constraint failed/);
+    const insert = (amount: number) =>
+      mockReal.adapter.runAsync(
+        "INSERT INTO recurring_payments (account_id, name, amount_cents, interval, unit, start_date, created_at) VALUES (1, 'x', ?, 1, 'month', '2026-06-15', 'c')",
+        amount,
+      );
+    await expect(insert(0)).rejects.toThrow(/CHECK constraint failed/);
+    await expect(insert(-5)).rejects.toThrow(/CHECK constraint failed/);
+    await insert(100);
+    expect(
+      mockReal.query(
+        'SELECT end_date, notify_days_before, active, last_confirmed_at FROM recurring_payments',
+      ),
+    ).toEqual([{ end_date: null, notify_days_before: '', active: 1, last_confirmed_at: null }]);
+  });
+
+  it('enforces the interval, unit and end date CHECKs', async () => {
+    await seedV5();
+    await initDb();
+    // The database only requires interval >= 1; the cap of 365 is validation.
+    await expect(insertSchedule(0, 'day', '2026-06-15', null)).rejects.toThrow(/CHECK constraint failed/);
+    await expect(insertSchedule(-1, 'day', '2026-06-15', null)).rejects.toThrow(/CHECK constraint failed/);
+    await expect(insertSchedule(1, 'fortnight', '2026-06-15', null)).rejects.toThrow(
+      /CHECK constraint failed/,
+    );
+    await expect(insertSchedule(1, 'Day', '2026-06-15', null)).rejects.toThrow(/CHECK constraint failed/);
+    await expect(insertSchedule(1, 'day', '2026-06-15', '2026-06-14')).rejects.toThrow(
+      /CHECK constraint failed/,
+    );
+    for (const unit of ['day', 'week', 'month', 'year']) {
+      await insertSchedule(1, unit, '2026-06-15', null);
+    }
+    await insertSchedule(1000, 'day', '2026-06-15', null);
+    // End on the start day, and after it, are fine.
+    await insertSchedule(1, 'day', '2026-06-15', '2026-06-15');
+    await insertSchedule(1, 'day', '2026-06-15', '2026-06-16');
+    expect(mockReal.query('SELECT id FROM recurring_payments')).toHaveLength(7);
+  });
+
+  it('never reuses recurring ids', async () => {
+    await seedV5();
+    await initDb();
+    await insertRecurring(1, 1);
+    await insertRecurring(2, 1);
+    await mockReal.adapter.runAsync('DELETE FROM recurring_payments WHERE id = 2');
+    const next = await mockReal.adapter.runAsync(
+      "INSERT INTO recurring_payments (account_id, name, amount_cents, interval, unit, start_date, created_at) VALUES (1, 'x', 1, 1, 'day', '2026-06-15', 'c')",
+    );
+    expect(next.lastInsertRowId).toBe(3);
+  });
+});
+
+describe('a failed upgrade from v5 changes nothing, and a retry succeeds', () => {
+  const failures = [
+    ['creating the recurring table', 'CREATE TABLE recurring_payments'],
+    ['the recurring index', 'CREATE INDEX idx_recurring_payments_account'],
+    ['the dangling link cleanup', 'UPDATE transactions SET recurring_id = NULL'],
+    ['creating the new transactions table', 'CREATE TABLE transactions_new'],
+    ['the copy', 'INSERT INTO transactions_new'],
+    ['carrying the counter over (update)', 'UPDATE sqlite_sequence'],
+    ['carrying the counter over (insert)', 'INSERT INTO sqlite_sequence'],
+    ['the drop', 'DROP TABLE transactions'],
+    ['the rename', 'RENAME TO transactions'],
+    ['the transactions index', 'CREATE INDEX idx_transactions_account_date'],
+    ['the foreign key check', 'PRAGMA foreign_key_check'],
+    ['writing the version', 'PRAGMA user_version = 6'],
+  ] as const;
+
+  it.each(failures)('fails at %s', async (_label, statement) => {
+    await seedV5();
+    const schemaBefore = schema();
+    const accountsBefore = mockReal.query('SELECT * FROM accounts ORDER BY id');
+    const rowsBefore = allTransactions();
+    const sequenceBefore = sequence('transactions');
+    expect(rowsBefore).toEqual(VALID);
+
+    mockReal.failOn(statement);
+    await expect(initDb()).rejects.toThrow('Injected failure');
+
+    // The statement was really reached, then everything was rolled back.
+    expect(mockReal.statements.some((sql) => sql.includes(statement))).toBe(true);
+    expect(userVersion()).toBe(5);
+    expect(schema()).toEqual(schemaBefore);
+    expect(schema().some((item) => item.name === 'recurring_payments')).toBe(false);
+    expect(schema().some((item) => item.name === 'transactions_new')).toBe(false);
+    expect(
+      schema().find((item) => item.name === 'transactions')?.sql,
+    ).not.toContain('recurring_payments');
+    expect(schema().find((item) => item.name === 'idx_transactions_account_date')).toBeTruthy();
+    expect(mockReal.query('SELECT * FROM accounts ORDER BY id')).toEqual(accountsBefore);
+    // Data intact, including the dangling recurring_id the cleanup would clear.
+    expect(allTransactions()).toEqual(rowsBefore);
+    expect(sequence('transactions')).toEqual(sequenceBefore);
+    expect(sequence('transactions_new')).toEqual([]);
+    expect(mockReal.query('SELECT key FROM settings ORDER BY key')).toEqual([
+      { key: 'default_currency' },
+      { key: 'language' },
+    ]);
+
+    // Retry without the failure.
+    mockReal.clearFailure();
+    resetDbForTests();
+    await initDb();
+    expect(userVersion()).toBe(6);
+    expect(allTransactions()).toEqual(VALID_AFTER_V6);
+    expect(mockReal.query('SELECT * FROM accounts ORDER BY id')).toEqual(accountsBefore);
+    expect(foreignKeys()).toBe(1);
+    expect(schema().some((item) => item.name === 'transactions_new')).toBe(false);
+  });
+
+  // Foreign keys are OFF during the upgrade, so a row linked to a recurring
+  // payment that does not exist is inserted right after the rename, and the
+  // check must find it and abort.
+  it('a real foreign key violation found by the check aborts the upgrade', async () => {
+    await seedV5();
+    const schemaBefore = schema();
+    const rowsBefore = allTransactions();
+    mockReal.afterStatement(
+      'RENAME TO transactions',
+      "INSERT INTO transactions (id, account_id, kind, amount_cents, date, recurring_id, created_at) VALUES (100, 1, 'expense', 5, 'd', 99, 'c')",
+    );
+    const checks: unknown[][] = [];
+    const getAll = mockReal.adapter.getAllAsync;
+    mockReal.adapter.getAllAsync = async <T>(sql: string, ...params: (string | number | null)[]) => {
+      const rows = await getAll<T>(sql, ...params);
+      if (sql === 'PRAGMA foreign_key_check') checks.push(rows);
+      return rows;
+    };
+
+    await expect(initDb()).rejects.toThrow('Foreign key check failed');
+
+    expect(checks).toHaveLength(1);
+    expect(checks[0]).toEqual([
+      expect.objectContaining({ table: 'transactions', rowid: 100, parent: 'recurring_payments' }),
+    ]);
+    expect(userVersion()).toBe(5);
+    expect(schema()).toEqual(schemaBefore);
+    expect(allTransactions()).toEqual(rowsBefore);
+
+    resetDbForTests();
+    await initDb();
+    expect(userVersion()).toBe(6);
+    expect(allTransactions()).toEqual(VALID_AFTER_V6);
+  });
+});
+
+describe('recurring payments through the real service', () => {
+  const input = {
+    accountId: 1,
+    name: ' Rent ',
+    amount: '1200.50',
+    interval: '1',
+    unit: 'month',
+    startDate: '2026-03-31',
+    endDate: '2026-12-31',
+    note: ' monthly ',
+    active: true,
+  };
+  const now = new Date(2026, 1, 20, 10, 0, 0);
+
+  const setup = async () => {
+    await initDb();
+    insertAccounts();
+  };
+
+  it('creates, lists, updates and removes, keeping reminders and confirmation on update', async () => {
+    await setup();
+    const created = await createRecurring(input, now);
+    expect(created).toMatchObject({
+      accountId: 1,
+      name: 'Rent',
+      amountCents: 120050,
+      note: 'monthly',
+      interval: 1,
+      unit: 'month',
+      startDate: '2026-03-31',
+      endDate: '2026-12-31',
+      notifyDaysBefore: '',
+      active: true,
+      lastConfirmedAt: null,
+      createdAt: now.toISOString(),
+    });
+    expect(await listRecurring()).toEqual([created]);
+    expect(await getRecurring(created.id)).toEqual(created);
+    // Stored as plain calendar days, not timestamps.
+    expect(
+      mockReal.query('SELECT start_date, end_date, last_confirmed_at FROM recurring_payments'),
+    ).toEqual([{ start_date: '2026-03-31', end_date: '2026-12-31', last_confirmed_at: null }]);
+
+    const updated = await updateRecurring(
+      created.id,
+      {
+        ...input,
+        accountId: 2,
+        name: 'Yen rent',
+        amount: '5000',
+        interval: '2',
+        unit: 'week',
+        startDate: '2026-04-01',
+        endDate: null,
+        note: '',
+        active: false,
+      },
+      new Date(2026, 1, 21, 10),
+    );
+    expect(updated).toEqual({
+      ...created,
+      accountId: 2,
+      name: 'Yen rent',
+      amountCents: 500000,
+      note: null,
+      interval: 2,
+      unit: 'week',
+      startDate: '2026-04-01',
+      endDate: null,
+      active: false,
+    });
+    expect(await listRecurring()).toEqual([updated]);
+
+    await removeRecurring(created.id);
+    expect(await listRecurring()).toEqual([]);
+  });
+
+  it('removing a payment keeps the transactions linked to it, with recurring_id NULL', async () => {
+    await setup();
+    const created = await createRecurring(input, now);
+    await insertTx(tx(1, 1, { recurring_id: created.id }));
+    await removeRecurring(created.id);
+    expect(allTransactions().map((row) => [row.id, row.recurring_id])).toEqual([[1, null]]);
+  });
+
+  it('removeAccount deletes the recurring payments too, in one transaction', async () => {
+    await setup();
+    const mine = await createRecurring(input, now);
+    const other = await createRecurring({ ...input, accountId: 2, amount: '100' }, now);
+    await insertTx(tx(1, 1, { recurring_id: mine.id }));
+
+    mockReal.failOn('DELETE FROM accounts');
+    await expect(removeAccount(1)).rejects.toThrow('Injected failure');
+    mockReal.clearFailure();
+    // The recurring delete ran, then was rolled back with everything else.
+    expect(mockReal.statements.some((sql) => sql.startsWith('DELETE FROM recurring_payments WHERE account_id = ?'))).toBe(true);
+    expect((await listRecurring()).map((item) => item.id)).toEqual([mine.id, other.id]);
+    expect(allTransactions()).toHaveLength(1);
+
+    await removeAccount(1);
+    expect((await listRecurring()).map((item) => item.id)).toEqual([other.id]);
+    expect(allTransactions()).toEqual([]);
+  });
+
+  it('a payment without an account uses the default_currency setting and survives removeAccount', async () => {
+    await setup();
+    const loose = await createRecurring({ ...input, accountId: null, amount: '500' }, now);
+    expect(loose.accountId).toBeNull();
+    // MXN when the setting is missing (decimals allowed), then JPY from the setting.
+    expect((await createRecurring({ ...input, accountId: null, amount: '5.25' }, now)).amountCents).toBe(525);
+    mockReal.exec("INSERT INTO settings (key, value) VALUES ('default_currency', 'JPY')");
+    await expect(
+      createRecurring({ ...input, accountId: null, amount: '5.25' }, now),
+    ).rejects.toMatchObject({ code: 'amountDecimalsNotAllowed' });
+
+    const mine = await createRecurring(input, now);
+    await removeAccount(1);
+    expect((await listRecurring()).map((item) => item.id)).toEqual([loose.id, loose.id + 1]);
+    expect(mine.accountId).toBe(1);
+
+    // Edit to an account and back to none.
+    const moved = await updateRecurring(loose.id, { ...input, accountId: 2, amount: '500' }, now);
+    expect(moved.accountId).toBe(2);
+    const unset = await updateRecurring(loose.id, { ...input, accountId: null, amount: '500' }, now);
+    expect(unset.accountId).toBeNull();
+  });
+
+  it('rejects invalid input without writing', async () => {
+    await setup();
+    await expect(createRecurring({ ...input, name: '  ' }, now)).rejects.toMatchObject({
+      code: 'nameRequired',
+    });
+    await expect(createRecurring({ ...input, accountId: 99 }, now)).rejects.toMatchObject({
+      code: 'accountNotFound',
+    });
+    await expect(createRecurring({ ...input, amount: '10.5', accountId: 2 }, now)).rejects.toMatchObject({
+      code: 'amountDecimalsNotAllowed',
+    });
+    await expect(createRecurring({ ...input, interval: '0' }, now)).rejects.toMatchObject({
+      code: 'intervalOutOfRange',
+    });
+    await expect(createRecurring({ ...input, startDate: '2026-02-19' }, now)).rejects.toMatchObject({
+      code: 'startDateInPast',
+    });
+    await expect(createRecurring({ ...input, endDate: '2026-03-30' }, now)).rejects.toMatchObject({
+      code: 'endBeforeStart',
+    });
+    expect(await listRecurring()).toEqual([]);
   });
 });
 

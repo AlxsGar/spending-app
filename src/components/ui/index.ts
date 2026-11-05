@@ -20,4 +20,5 @@ export { SectionHeader } from './SectionHeader';
 export { SegmentedControl } from './SegmentedControl';
 export { SettingRow } from './SettingRow';
 export { SuccessHost } from './SuccessHost';
+export { SwitchRow } from './SwitchRow';
 export { TextField } from './TextField';

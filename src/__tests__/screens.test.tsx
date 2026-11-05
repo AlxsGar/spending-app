@@ -6,14 +6,20 @@ import HomeScreen from '@/app/(tabs)/index';
 import MovementsScreen from '@/app/(tabs)/movements';
 import SettingsScreen from '@/app/(tabs)/settings';
 import { en } from '@/i18n/en';
-import { listAccounts } from '@/services/accounts';
+import { getDefaultCurrency, listAccounts } from '@/services/accounts';
+import { dayToDate, listRecurring, toDay } from '@/services/recurring';
+import type { RecurringPayment } from '@/services/recurring';
 import { listTransactions } from '@/services/transactions';
 import { useAccountsStore } from '@/stores/accounts-store';
+import { useRecurringStore } from '@/stores/recurring-store';
 import { useTransactionsStore } from '@/stores/transactions-store';
+import { silenceConsoleError } from '@/test/console-error';
 import { fakeAnimationTimers, renderWithProviders } from '@/test/render';
 import { colors } from '@/theme';
 
 fakeAnimationTimers();
+// A failed recurring load is logged as "[recurring] list failed:".
+const consoleError = silenceConsoleError();
 
 const mockPush = jest.fn();
 
@@ -23,10 +29,16 @@ jest.mock('expo-router', () => ({
 }));
 jest.mock('@/services/accounts', () => ({
   listAccounts: jest.fn().mockResolvedValue([]),
+  getDefaultCurrency: jest.fn().mockResolvedValue('MXN'),
+  FALLBACK_CURRENCY: 'MXN',
 }));
 jest.mock('@/services/transactions', () => ({
   ...jest.requireActual('@/services/transactions'),
   listTransactions: jest.fn().mockResolvedValue([]),
+}));
+jest.mock('@/services/recurring', () => ({
+  ...jest.requireActual('@/services/recurring'),
+  listRecurring: jest.fn().mockResolvedValue([]),
 }));
 jest.mock('@/services/language', () => ({
   loadLanguage: jest.fn(),
@@ -43,6 +55,28 @@ const account = {
   balanceAnchorCents: 0,
   balanceAnchorAt: null,
 };
+
+const payment = (
+  id: number,
+  name: string,
+  amountCents: number,
+  extra: Partial<RecurringPayment> = {},
+): RecurringPayment => ({
+  id,
+  accountId: 7 as number | null,
+  name,
+  amountCents,
+  note: null,
+  interval: 1,
+  unit: 'month',
+  startDate: '2026-01-15',
+  endDate: null,
+  notifyDaysBefore: '',
+  active: true,
+  lastConfirmedAt: null,
+  createdAt: '2026-01-01T00:00:00.000Z',
+  ...extra,
+});
 
 // A higher id was recorded later. The date defaults to just before now
 // (newer id = older date, to prove Home does not order by date).
@@ -70,6 +104,118 @@ describe('tab screens', () => {
     (listTransactions as jest.Mock).mockResolvedValue([]);
     useAccountsStore.setState({ accounts: [], status: 'idle', saveError: false });
     useTransactionsStore.setState({ transactions: [], status: 'idle' });
+    (listRecurring as jest.Mock).mockResolvedValue([]);
+    useRecurringStore.setState({ payments: [], status: 'idle' });
+  });
+
+  it('Movements lists recurring payments above the transactions with account, amount and next due date', async () => {
+    const now = new Date();
+    const inDays = (days: number) => toDay(new Date(now.getFullYear(), now.getMonth(), now.getDate() + days));
+    const fmt = (day: string) =>
+      new Intl.DateTimeFormat('en', { dateStyle: 'medium' }).format(dayToDate(day));
+    (listAccounts as jest.Mock).mockResolvedValue([account]);
+    (listTransactions as jest.Mock).mockResolvedValue([tx(1, 'income', 10000, 'Pay')]);
+    (listRecurring as jest.Mock).mockResolvedValue([
+      payment(1, 'Rent', 120000, {
+        interval: 2,
+        unit: 'week',
+        startDate: inDays(3),
+        endDate: inDays(100),
+      }),
+      payment(2, 'Gym', 4500, { active: false, startDate: inDays(5) }),
+      payment(3, 'Phone', 1000, { startDate: inDays(1) }),
+    ]);
+    await renderWithProviders(<MovementsScreen />);
+    expect(await screen.findByText(en.recurring.sectionTitle)).toBeTruthy();
+    expect(screen.getByText('Rent')).toBeTruthy();
+    expect(screen.getByText('$1,200.00')).toBeTruthy();
+    expect(screen.getByText('Gym')).toBeTruthy();
+    expect(screen.getByText('$45.00')).toBeTruthy();
+    // Account name, schedule and next date, and the end date, under the name.
+    expect(
+      screen.getByText(
+        `Savings\nEvery 2 weeks · next ${fmt(inDays(3))}\nEnds ${fmt(inDays(100))}`,
+      ),
+    ).toBeTruthy();
+    // N = 1 drops the number.
+    expect(screen.getByText(`Savings\nEvery month · next ${fmt(inDays(1))}`)).toBeTruthy();
+    // Inactive replaces the date.
+    expect(screen.getByText('Savings\nEvery month · Inactive')).toBeTruthy();
+    // Soonest next date first.
+    const names = screen.getAllByText(/^(Rent|Gym|Phone)$/).map((node) => node.props.children);
+    expect(names).toEqual(['Phone', 'Rent', 'Gym']);
+    // The transactions are still there, and the section comes first.
+    expect(screen.getByText('Pay')).toBeTruthy();
+    const order = screen.getAllByText(/^(Recurring payments|Today)$/).map((node) => node.props.children);
+    expect(order).toEqual([en.recurring.sectionTitle, en.transactions.today]);
+  });
+
+  it('Movements shows "Not set" for a payment without an account, in the default currency', async () => {
+    (listAccounts as jest.Mock).mockResolvedValue([account]);
+    (listRecurring as jest.Mock).mockResolvedValue([
+      payment(1, 'Linked', 120000),
+      payment(2, 'Loose', 4500, { accountId: null }),
+    ]);
+    await renderWithProviders(<MovementsScreen />);
+    expect(await screen.findByText('Loose')).toBeTruthy();
+    // The default currency is MXN here; the linked one is in its account's USD.
+    // (Text matching collapses the line breaks into spaces.)
+    expect(screen.getByText(/^Not set Every month/)).toBeTruthy();
+    expect(screen.getByText(/^Savings Every month/)).toBeTruthy();
+    expect(screen.getByText('$1,200.00')).toBeTruthy();
+    expect(screen.getByText(/^MX\$45\.00$/)).toBeTruthy();
+  });
+
+  it('Movements formats a payment without an account in a JPY default currency', async () => {
+    (getDefaultCurrency as jest.Mock).mockResolvedValueOnce('JPY');
+    (listAccounts as jest.Mock).mockResolvedValue([account]);
+    (listRecurring as jest.Mock).mockResolvedValue([
+      payment(2, 'Loose', 150000, { accountId: null }),
+    ]);
+    await renderWithProviders(<MovementsScreen />);
+    expect(await screen.findByText('Loose')).toBeTruthy();
+    expect(screen.getByText('¥1,500')).toBeTruthy();
+  });
+
+  it('Movements opens the recurring edit route when a recurring row is tapped', async () => {
+    (listAccounts as jest.Mock).mockResolvedValue([account]);
+    (listRecurring as jest.Mock).mockResolvedValue([payment(3, 'Rent', 120000)]);
+    await renderWithProviders(<MovementsScreen />);
+    fireEvent.press(await screen.findByText('Rent'));
+    expect(mockPush).toHaveBeenCalledWith({ pathname: '/recurring/[id]', params: { id: 3 } });
+  });
+
+  it('Movements hides the recurring section when there are none, and keeps the empty state', async () => {
+    (listAccounts as jest.Mock).mockResolvedValue([account]);
+    await renderWithProviders(<MovementsScreen />);
+    expect(await screen.findByText(en.movements.emptyTitle)).toBeTruthy();
+    expect(screen.queryByText(en.recurring.sectionTitle)).toBeNull();
+  });
+
+  it('Movements shows only the recurring section, without the empty state, when it has payments but no transactions', async () => {
+    (listAccounts as jest.Mock).mockResolvedValue([account]);
+    (listRecurring as jest.Mock).mockResolvedValue([payment(3, 'Rent', 120000)]);
+    await renderWithProviders(<MovementsScreen />);
+    expect(await screen.findByText('Rent')).toBeTruthy();
+    expect(screen.queryByText(en.movements.emptyTitle)).toBeNull();
+  });
+
+  it('Movements shows an error with retry when the recurring payments fail to load', async () => {
+    (listAccounts as jest.Mock).mockResolvedValue([account]);
+    (listRecurring as jest.Mock).mockRejectedValueOnce(new Error('db'));
+    await renderWithProviders(<MovementsScreen />);
+    expect(await screen.findByText(en.common.loadError)).toBeTruthy();
+    expect(consoleError()).toHaveBeenCalledWith('[recurring] list failed:', expect.any(Error));
+    fireEvent.press(screen.getByText(en.common.retry));
+    expect(await screen.findByText(en.movements.emptyTitle)).toBeTruthy();
+  });
+
+  it('the FAB recurring action opens the new recurring form', async () => {
+    await renderWithProviders(<MovementsScreen />);
+    fireEvent.press(await screen.findByLabelText(en.fab.open));
+    await screen.findByLabelText(en.fab.addRecurring);
+    fireEvent.press(screen.getByText(en.fab.addRecurring, { includeHiddenElements: true }));
+    expect(mockPush).toHaveBeenCalledWith('/recurring/new');
   });
 
   it('Movements groups transactions under Today, signed, with balances on Accounts', async () => {

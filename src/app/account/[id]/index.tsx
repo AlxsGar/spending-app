@@ -1,8 +1,10 @@
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
+import type { TFunction } from 'i18next';
 import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { StyleSheet, View } from 'react-native';
 
+import { RecurringSection } from '@/components/recurring-section';
 import { TransactionList } from '@/components/transaction-list';
 import {
   AmountText,
@@ -17,8 +19,29 @@ import {
 import { formatShortDate } from '@/services/format-date';
 import { computeBalances } from '@/services/transactions';
 import { useAccounts, useAccountsStore } from '@/stores/accounts-store';
+import { useRecurring } from '@/stores/recurring-store';
 import { useTransactions } from '@/stores/transactions-store';
 import { sizes, spacing } from '@/theme';
+
+// What the delete confirmation says goes with the account. Transactions alone
+// keep their own message; recurring payments (alone or with transactions) list
+// each count with its own plural.
+function deleteMessage(t: TFunction, transactions: number, recurring: number): string {
+  if (recurring === 0) {
+    return transactions > 0
+      ? t('accounts.deleteMessageWithTransactions', { count: transactions })
+      : t('accounts.deleteMessage');
+  }
+  const recurringText = t('accounts.deleteItemRecurring', { count: recurring });
+  const items =
+    transactions > 0
+      ? t('accounts.deleteItemsJoin', {
+          first: t('accounts.deleteItemTransactions', { count: transactions }),
+          second: recurringText,
+        })
+      : recurringText;
+  return t('accounts.deleteMessageWithItems', { items });
+}
 
 export default function AccountDetailScreen() {
   const { t, i18n } = useTranslation();
@@ -34,7 +57,16 @@ export default function AccountDetailScreen() {
     status: transactionsStatus,
     reload: reloadTransactions,
   } = useTransactions();
+  const {
+    payments,
+    status: recurringStatus,
+    reload: reloadRecurring,
+  } = useRecurring();
   const account = accounts.find((item) => item.id === Number(id));
+  const accountPayments = useMemo(
+    () => payments.filter((item) => item.accountId === Number(id)),
+    [payments, id],
+  );
   const balances = useMemo(() => computeBalances(accounts, transactions), [accounts, transactions]);
   const accountTransactions = useMemo(
     () => transactions.filter((item) => item.accountId === Number(id)),
@@ -129,14 +161,33 @@ export default function AccountDetailScreen() {
           <AppButton
             label={t('accounts.delete')}
             variant="destructive"
-            // The confirmation states how many transactions go too, so wait for them.
-            disabled={transactionsStatus !== 'ready'}
+            // The confirmation states how many transactions and recurring
+            // payments go too, so wait for them.
+            disabled={transactionsStatus !== 'ready' || recurringStatus !== 'ready'}
             onPress={() => {
               setDeleteFailed(false);
               setConfirming(true);
             }}
           />
         </View>
+        {recurringStatus === 'error' ? (
+          <ErrorState
+            message={t('common.loadError')}
+            retryLabel={t('common.retry')}
+            onRetry={() => void reloadRecurring()}
+          />
+        ) : (
+          <RecurringSection
+            payments={accountPayments}
+            accounts={accounts}
+            // Only payments linked to this account are listed, so its own
+            // currency is never used as a fallback.
+            defaultCurrency={account.currency}
+            onOpen={(paymentId) =>
+              router.push({ pathname: '/recurring/[id]', params: { id: paymentId } })
+            }
+          />
+        )}
       </>
     );
 
@@ -154,13 +205,7 @@ export default function AccountDetailScreen() {
         <ConfirmDialog
           visible={confirming}
           title={t('accounts.deleteTitle')}
-          message={
-            accountTransactions.length > 0
-              ? t('accounts.deleteMessageWithTransactions', {
-                  count: accountTransactions.length,
-                })
-              : t('accounts.deleteMessage')
-          }
+          message={deleteMessage(t, accountTransactions.length, accountPayments.length)}
           confirmLabel={t('accounts.delete')}
           cancelLabel={t('common.cancel')}
           onConfirm={() => void confirmDelete()}

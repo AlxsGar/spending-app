@@ -24,6 +24,8 @@ type TransactionsState = {
   remove: (id: number) => Promise<boolean>;
   // Drops an account's transactions from memory after the account was deleted.
   dropForAccount: (accountId: number) => void;
+  // Clears the link to a deleted recurring payment (the database did the same).
+  unlinkRecurring: (recurringId: number) => void;
 };
 
 export const useTransactionsStore = create<TransactionsState>((set, get) => ({
@@ -82,6 +84,12 @@ export const useTransactionsStore = create<TransactionsState>((set, get) => ({
   dropForAccount: (accountId) =>
     set((state) => ({
       transactions: state.transactions.filter((item) => item.accountId !== accountId),
+    })),
+  unlinkRecurring: (recurringId) =>
+    set((state) => ({
+      transactions: state.transactions.map((item) =>
+        item.recurringId === recurringId ? { ...item, recurringId: null } : item,
+      ),
     })),
 }));
 

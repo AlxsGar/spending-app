@@ -8,17 +8,28 @@ type Props = {
   icon: string;
   title: string;
   description?: string;
+  // Lines the description may use (Paper's default is 2).
+  descriptionLines?: number;
   right?: ReactNode;
   onPress?: () => void;
   accessibilityLabel?: string;
 };
 
-export function ListRow({ icon, title, description, right, onPress, accessibilityLabel }: Props) {
+export function ListRow({
+  icon,
+  title,
+  description,
+  descriptionLines,
+  right,
+  onPress,
+  accessibilityLabel,
+}: Props) {
   return (
     <List.Item
       accessibilityLabel={accessibilityLabel}
       title={title}
       description={description}
+      descriptionNumberOfLines={descriptionLines}
       titleStyle={typography.bodyStrong}
       descriptionStyle={styles.description}
       style={styles.item}

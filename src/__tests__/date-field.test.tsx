@@ -78,6 +78,33 @@ describe('DateField on Android', () => {
     expect(openCall().maximumDate).toEqual(new Date(2026, 2, 10, 23, 59, 59, 999));
   });
 
+  it('allowFuture lifts the maximum and minimumDate sets the floor', async () => {
+    const floor = new Date(2026, 2, 5);
+    await renderWithProviders(
+      <DateField
+        value={TODAY}
+        onChange={jest.fn()}
+        locale="es"
+        accessibilityLabel="Date"
+        displayValue="Today"
+        confirmLabel="Done"
+        cancelLabel="Cancel"
+        allowFuture
+        minimumDate={floor}
+      />,
+    );
+    fireEvent.press(screen.getByLabelText('Date'));
+    expect(openCall().maximumDate).toBeUndefined();
+    expect(openCall().minimumDate).toEqual(floor);
+  });
+
+  it('has no minimum by default', async () => {
+    const { ui } = setup();
+    await renderWithProviders(ui);
+    fireEvent.press(screen.getByLabelText('Date'));
+    expect(openCall().minimumDate).toBeUndefined();
+  });
+
   it('follows the clock past midnight each time it opens', async () => {
     const { ui } = setup();
     await renderWithProviders(ui);

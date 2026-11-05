@@ -1,7 +1,7 @@
 import * as SQLite from 'expo-sqlite';
 
 const DB_NAME = 'spending.db';
-const SCHEMA_VERSION = 5;
+const SCHEMA_VERSION = 6;
 
 let dbPromise: Promise<SQLite.SQLiteDatabase> | null = null;
 
@@ -101,6 +101,74 @@ async function migrate(db: SQLite.SQLiteDatabase): Promise<void> {
       );
       await db.execAsync('ALTER TABLE accounts ADD COLUMN balance_anchor_at TEXT');
     }
+    if (current < 6) {
+      await db.execAsync(
+        `CREATE TABLE recurring_payments (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          account_id INTEGER REFERENCES accounts(id) ON DELETE CASCADE,
+          name TEXT NOT NULL,
+          amount_cents INTEGER NOT NULL CHECK (amount_cents > 0),
+          note TEXT,
+          interval INTEGER NOT NULL CHECK (interval >= 1),
+          unit TEXT NOT NULL CHECK (unit IN ('day','week','month','year')),
+          start_date TEXT NOT NULL,
+          end_date TEXT,
+          notify_days_before TEXT NOT NULL DEFAULT '',
+          active INTEGER NOT NULL DEFAULT 1,
+          last_confirmed_at TEXT,
+          created_at TEXT NOT NULL,
+          CHECK (end_date IS NULL OR end_date >= start_date)
+        )`,
+      );
+      await db.execAsync(
+        'CREATE INDEX idx_recurring_payments_account ON recurring_payments (account_id)',
+      );
+      // A link to a recurring payment that does not exist (there is no such
+      // table before this step) would fail the foreign key check below.
+      await db.execAsync(
+        `UPDATE transactions SET recurring_id = NULL
+         WHERE recurring_id IS NOT NULL
+           AND recurring_id NOT IN (SELECT id FROM recurring_payments)`,
+      );
+      // Rebuild transactions so recurring_id has a foreign key, same procedure
+      // as in the v4 step.
+      await db.execAsync(
+        `CREATE TABLE transactions_new (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          account_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+          kind TEXT NOT NULL CHECK (kind IN ('expense','income')),
+          amount_cents INTEGER NOT NULL CHECK (amount_cents > 0),
+          date TEXT NOT NULL,
+          note TEXT,
+          recurring_id INTEGER REFERENCES recurring_payments(id) ON DELETE SET NULL,
+          created_at TEXT NOT NULL
+        )`,
+      );
+      await db.execAsync(
+        `INSERT INTO transactions_new (id, account_id, kind, amount_cents, date, note, recurring_id, created_at)
+         SELECT id, account_id, kind, amount_cents, date, note, recurring_id, created_at FROM transactions`,
+      );
+      await db.execAsync(
+        `UPDATE sqlite_sequence
+         SET seq = max(seq, (SELECT COALESCE(max(seq), 0) FROM sqlite_sequence WHERE name = 'transactions'))
+         WHERE name = 'transactions_new'`,
+      );
+      await db.execAsync(
+        `INSERT INTO sqlite_sequence (name, seq)
+         SELECT 'transactions_new', seq FROM sqlite_sequence
+         WHERE name = 'transactions'
+           AND NOT EXISTS (SELECT 1 FROM sqlite_sequence WHERE name = 'transactions_new')`,
+      );
+      await db.execAsync('DROP TABLE transactions');
+      await db.execAsync('ALTER TABLE transactions_new RENAME TO transactions');
+      await db.execAsync(
+        'CREATE INDEX idx_transactions_account_date ON transactions (account_id, date)',
+      );
+      const violations = await db.getAllAsync('PRAGMA foreign_key_check');
+      if (violations.length > 0) {
+        throw new Error('Foreign key check failed after rebuilding transactions');
+      }
+    }
     await db.execAsync(`PRAGMA user_version = ${SCHEMA_VERSION}`);
   });
 }
@@ -121,6 +189,9 @@ async function open(): Promise<SQLite.SQLiteDatabase> {
 export function initDb(): Promise<SQLite.SQLiteDatabase> {
   if (!dbPromise) {
     dbPromise = open().catch((error) => {
+      // Diagnostic: opening or migrating the database failed (the app only
+      // shows a generic message). Logged, then rethrown as before.
+      console.error('[db] open/migrate failed:', error);
       dbPromise = null;
       throw error;
     });

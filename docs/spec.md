@@ -62,17 +62,75 @@ No categories in v1.
 
 ### Recurring payment
 
-- `id`, `account_id`
+- `id`
+- `account_id` - optional. The form's account picker starts with "Not set"
+  / "Sin definir", which is the default for a new recurring payment. When
+  set, deleting the account deletes the payment. A payment with no account
+  uses the default currency (`default_currency` setting, else MXN) for
+  amount parsing and display. Movements rows show "Not set" where the
+  account name would be. An account's detail lists only payments linked to
+  it, and deleting an account counts only its linked payments.
 - `name`, `amount_cents`, `note`
-- `day_of_month` - 1..31; months with fewer days use their last day
+- `interval` - integer 1..365, and `unit` - `day` | `week` | `month` |
+  `year`. Read as "Every [interval] [unit]" (every 10 days, every 2 weeks,
+  every month).
+- `start_date` - calendar day (`YYYY-MM-DD`), required, defaults to today.
+  On create it must be today or later. On edit an unchanged past start date
+  is kept; a changed one must be today or later. The start date is the first
+  occurrence and the anchor: weekly repeats on its weekday, monthly on its
+  day of month, yearly on its month and day.
+- `end_date` - optional calendar day (`YYYY-MM-DD`); empty means indefinite.
+  Must be on or after `start_date`. If it falls before the second
+  occurrence, the form shows an inline warning that the payment will only
+  occur once, but saving is allowed.
 - `notify_days_before` - any subset of `{3, 2, 1, 0}` where `0` means the
-  morning of the due date. Empty set means no notifications.
+  morning of the occurrence. Empty set means no notifications. Reminders
+  are relative to each occurrence.
 - `active` - boolean
-- `last_confirmed_period` - the `YYYY-MM` it was last paid
+- `last_confirmed_at` - calendar day (`YYYY-MM-DD`) of the last occurrence
+  that was paid or skipped; empty if never.
 
-A recurring payment is never deducted automatically. Each month it appears as
-*due* and the user confirms it (on or before the due date, "pay now"), which
-creates a real `expense` transaction linked by `recurring_id`.
+Schedule dates are calendar days, not timestamps (exception to the ISO UTC
+rule); `created_at` stays ISO UTC.
+
+Occurrence rules:
+
+- Occurrences are counted from `start_date` in steps of `interval` × `unit`.
+  Days and weeks count calendar days, so DST changes never shift them.
+- Monthly or yearly occurrences on a day the month does not have (31st,
+  Feb 29) fall back to that month's last day, without drifting (Jan 31 →
+  Feb 28 → Mar 31).
+- No occurrence is after `end_date`.
+- Current occurrence: the latest occurrence on or before today that is after
+  `last_confirmed_at`. It shows as overdue until the next occurrence
+  arrives, then it is dropped. Only one occurrence is ever due or overdue;
+  earlier missed ones are dropped. The last occurrence before `end_date`
+  stays overdue until paid or skipped.
+- With no current occurrence, the next due date is the first occurrence on
+  or after today (and after `last_confirmed_at`).
+- Finished: the last occurrence has passed and been paid or skipped.
+- Editing, never paid: changing interval, unit or start date recomputes the
+  next due date. Renames and amount edits never move it.
+- Editing, once paid: future occurrences follow the new schedule counted
+  from the last paid occurrence, and the start date field shows that date;
+  a changed start date must be after the last paid occurrence and becomes
+  the new anchor. Paid occurrences are untouched.
+
+Rows show "Every 2 weeks · next Oct 28" or "Every month · next Nov 1", plus
+"Ends Dec 31" when an end date is set.
+
+A recurring payment is never deducted automatically. Each occurrence
+appears as *due* and the user confirms it ("pay now", allowed early), which
+creates a real `expense` transaction linked by `recurring_id` and marks that
+occurrence as paid. Pay now asks for the amount (prefilled with the
+payment's amount) and the account to pay from; the date is today. If the
+payment has no account, choosing one is required. If it has one, that
+account is the default and can be changed for that occurrence. The chosen
+account goes on the created expense; the payment's own account does not
+change. Paying from an account in another currency relabels the amount, as
+with any currency change; nothing is converted. *Skip* marks the current occurrence as handled without creating a
+transaction. Deleting the linked expense reverts the occurrence to unpaid
+if it was the latest confirmation.
 
 ### Soft cap
 
@@ -146,7 +204,8 @@ appears when something is due within a week.
 
 Shown per account and overall: current balance minus the unconfirmed
 recurring payments still due this month. `[Q10]` confirm this rule when the
-slice comes up.
+slice comes up. Decided: recurring payments with no account count in the
+overall projection but not in any account's.
 
 ## Rules carried over from CLAUDE.md
 

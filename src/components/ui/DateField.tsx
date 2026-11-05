@@ -20,6 +20,10 @@ type Props = {
   // What "now" is. Read each time the picker opens, so a screen left open
   // past midnight limits the picker to the new day.
   getNow?: () => Date;
+  // Allow days after today (schedules). By default a future day is blocked.
+  allowFuture?: boolean;
+  // The earliest day the picker offers (local day).
+  minimumDate?: Date;
 };
 
 const defaultNow = () => new Date();
@@ -33,7 +37,8 @@ function localDay(date: Date): Date {
 }
 
 // Custom component: Paper has no date picker. A Paper Button shows the date
-// and opens the platform's native picker, which never accepts a future day.
+// and opens the platform's native picker, which by default never accepts a
+// future day (`allowFuture` lifts that; `minimumDate` sets a floor).
 //
 // - Android: the native calendar dialog (imperative API). It is already a
 //   system dialog, so it needs no extra container.
@@ -49,18 +54,23 @@ export function DateField({
   confirmLabel,
   cancelLabel,
   getNow = defaultNow,
+  allowFuture = false,
+  minimumDate,
 }: Props) {
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState(value);
-  const [maximumDate, setMaximumDate] = useState(() => endOfLocalDay(getNow()));
+  const [maximumDate, setMaximumDate] = useState<Date | undefined>(() =>
+    allowFuture ? undefined : endOfLocalDay(getNow()),
+  );
 
   const openPicker = () => {
-    const limit = endOfLocalDay(getNow());
+    const limit = allowFuture ? undefined : endOfLocalDay(getNow());
     if (Platform.OS === 'android') {
       DateTimePickerAndroid.open({
         value,
         mode: 'date',
         maximumDate: limit,
+        minimumDate,
         onChange: (event: DateTimePickerEvent, picked?: Date) => {
           if (event.type === 'set' && picked) onChange(localDay(picked));
         },
@@ -97,6 +107,7 @@ export function DateField({
                 themeVariant="dark"
                 textColor={colors.text}
                 maximumDate={maximumDate}
+                minimumDate={minimumDate}
                 onChange={(_event, picked) => {
                   if (picked) setDraft(picked);
                 }}

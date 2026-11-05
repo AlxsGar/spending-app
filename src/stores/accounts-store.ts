@@ -9,6 +9,7 @@ import {
 } from '@/services/accounts';
 import type { Account, AccountInput } from '@/services/accounts';
 
+import { useRecurringStore } from './recurring-store';
 import { useTransactionsStore } from './transactions-store';
 
 type Status = 'idle' | 'loading' | 'ready' | 'error';
@@ -65,6 +66,7 @@ export const useAccountsStore = create<AccountsState>((set, get) => ({
       await removeAccount(id);
       // The service deleted the account's transactions with it.
       useTransactionsStore.getState().dropForAccount(id);
+      useRecurringStore.getState().dropForAccount(id);
       set((state) => ({
         accounts: state.accounts.filter((item) => item.id !== id),
         saveError: false,

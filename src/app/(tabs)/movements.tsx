@@ -1,15 +1,33 @@
 import { useRouter } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 
+import { RecurringSection } from '@/components/recurring-section';
 import { TabScreen } from '@/components/tab-screen';
 import { TransactionList } from '@/components/transaction-list';
 import { EmptyState, ErrorState, LoadingState } from '@/components/ui';
+import { FALLBACK_CURRENCY } from '@/services/accounts';
+import { useDefaultCurrency } from '@/stores/default-currency';
 import { useLedger } from '@/stores/ledger';
+import { useRecurring } from '@/stores/recurring-store';
 
 export default function MovementsScreen() {
   const { t } = useTranslation();
   const router = useRouter();
-  const { accounts, transactions, status, reload } = useLedger();
+  const ledger = useLedger();
+  const recurring = useRecurring();
+  const defaultCurrency = useDefaultCurrency();
+  const { accounts, transactions } = ledger;
+
+  let status = ledger.status;
+  if (recurring.status === 'error') {
+    status = 'error';
+  } else if (status !== 'error' && (recurring.status !== 'ready' || defaultCurrency === null)) {
+    status = 'loading';
+  }
+  const reload = () => {
+    ledger.reload();
+    if (recurring.status !== 'ready') void recurring.reload();
+  };
 
   let body;
   if (status === 'loading') {
@@ -27,14 +45,25 @@ export default function MovementsScreen() {
       <TransactionList
         transactions={transactions}
         accounts={accounts}
-        onOpen={(id) => router.push({ pathname: '/transaction/[id]', params: { id } })}
-        empty={
-          <EmptyState
-            title={t('movements.emptyTitle')}
-            description={t('movements.emptyDescription')}
-            actionLabel={t('movements.emptyAction')}
-            onAction={() => router.push('/transaction/new')}
+        header={
+          <RecurringSection
+            payments={recurring.payments}
+            accounts={accounts}
+            defaultCurrency={defaultCurrency ?? FALLBACK_CURRENCY}
+            onOpen={(id) => router.push({ pathname: '/recurring/[id]', params: { id } })}
           />
+        }
+        onOpen={(id) => router.push({ pathname: '/transaction/[id]', params: { id } })}
+        // With recurring payments listed above, the page is not empty.
+        empty={
+          recurring.payments.length > 0 ? null : (
+            <EmptyState
+              title={t('movements.emptyTitle')}
+              description={t('movements.emptyDescription')}
+              actionLabel={t('movements.emptyAction')}
+              onAction={() => router.push('/transaction/new')}
+            />
+          )
         }
       />
     );

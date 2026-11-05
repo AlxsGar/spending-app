@@ -5,6 +5,10 @@ import AccountDetailScreen from '@/app/account/[id]/index';
 import EditAccountScreen from '@/app/account/[id]/edit';
 import { AccountCards } from '@/components/account-cards';
 import { en } from '@/i18n/en';
+import { es } from '@/i18n/es';
+import i18n from '@/i18n';
+import { listRecurring } from '@/services/recurring';
+import type { RecurringPayment } from '@/services/recurring';
 import { formatMoney } from '@/services/money';
 import {
   createAccount,
@@ -15,6 +19,7 @@ import {
 import { getSetting } from '@/services/db';
 import { computeBalances, listTransactions } from '@/services/transactions';
 import { useAccountsStore } from '@/stores/accounts-store';
+import { useRecurringStore } from '@/stores/recurring-store';
 import { useSuccessStore } from '@/stores/success-store';
 import { useTransactionsStore } from '@/stores/transactions-store';
 import { fakeAnimationTimers, renderWithProviders } from '@/test/render';
@@ -43,6 +48,11 @@ jest.mock('@/services/transactions', () => ({
   listTransactions: jest.fn(),
 }));
 
+jest.mock('@/services/recurring', () => ({
+  ...jest.requireActual('@/services/recurring'),
+  listRecurring: jest.fn(),
+}));
+
 jest.mock('@/services/db', () => ({ getSetting: jest.fn(), initDb: jest.fn() }));
 
 const account = {
@@ -61,8 +71,203 @@ beforeEach(() => {
   useSuccessStore.setState({ current: null });
   (listAccounts as jest.Mock).mockResolvedValue([account]);
   (listTransactions as jest.Mock).mockResolvedValue([]);
+  (listRecurring as jest.Mock).mockResolvedValue([]);
   useAccountsStore.setState({ accounts: [], status: 'idle', saveError: false });
   useTransactionsStore.setState({ transactions: [], status: 'idle' });
+  useRecurringStore.setState({ payments: [], status: 'idle' });
+});
+
+const recurringPayment = (
+  id: number,
+  accountId: number | null,
+  name: string,
+  extra: Partial<RecurringPayment> = {},
+): RecurringPayment => ({
+  id,
+  accountId,
+  name,
+  amountCents: 150000,
+  note: null,
+  interval: 1,
+  unit: 'month',
+  startDate: '2026-01-15',
+  endDate: null,
+  notifyDaysBefore: '',
+  active: true,
+  lastConfirmedAt: null,
+  createdAt: '2026-01-01T00:00:00.000Z',
+  ...extra,
+});
+
+describe('account detail recurring payments', () => {
+  it('lists only this account recurring payments, with amount and next due date', async () => {
+    (listRecurring as jest.Mock).mockResolvedValue([
+      recurringPayment(1, 7, 'Rent'),
+      recurringPayment(2, 9, 'Other account'),
+      recurringPayment(3, 7, 'Gym', { active: false, amountCents: 4500 }),
+    ]);
+    await renderWithProviders(<AccountDetailScreen />);
+    expect(await screen.findByText(en.recurring.sectionTitle)).toBeTruthy();
+    expect(screen.getByText('Rent')).toBeTruthy();
+    expect(screen.getByText('€1,500.00')).toBeTruthy();
+    expect(screen.getByText('Gym')).toBeTruthy();
+    expect(screen.getByText(/Every month · Inactive/)).toBeTruthy();
+    expect(screen.getByText(/Every month · next /)).toBeTruthy();
+    expect(screen.queryByText('Other account')).toBeNull();
+  });
+
+  it('ignores unassigned payments: not listed, not counted, not removed with the account', async () => {
+    (listRecurring as jest.Mock).mockResolvedValue([
+      recurringPayment(1, 7, 'Linked A'),
+      recurringPayment(2, null, 'Loose'),
+      recurringPayment(3, 7, 'Linked B'),
+      recurringPayment(4, 9, 'Elsewhere'),
+    ]);
+    (removeAccount as jest.Mock).mockResolvedValue(undefined);
+    await renderWithProviders(<AccountDetailScreen />);
+    expect(await screen.findByText('Linked A')).toBeTruthy();
+    expect(screen.getByText('Linked B')).toBeTruthy();
+    expect(screen.queryByText('Loose')).toBeNull();
+    await waitFor(() =>
+      expect(
+        screen.getByRole('button', { name: en.accounts.delete }).props.accessibilityState
+          ?.disabled,
+      ).toBeFalsy(),
+    );
+    fireEvent.press(screen.getByText(en.accounts.delete));
+    // Two linked payments; the unassigned one is not counted.
+    expect(
+      await screen.findByText(
+        'This deletes the account along with 2 recurring payments. This cannot be undone.',
+      ),
+    ).toBeTruthy();
+    const deletes = screen.getAllByText(en.accounts.delete);
+    fireEvent.press(deletes[deletes.length - 1]);
+    await waitFor(() => expect(mockBack).toHaveBeenCalledTimes(1));
+    expect(useRecurringStore.getState().payments.map((item) => item.id)).toEqual([2, 4]);
+  });
+
+  it('hides the section when the account has none', async () => {
+    (listRecurring as jest.Mock).mockResolvedValue([recurringPayment(2, 9, 'Other account')]);
+    await renderWithProviders(<AccountDetailScreen />);
+    await screen.findByText(en.transactions.accountEmpty);
+    expect(screen.queryByText(en.recurring.sectionTitle)).toBeNull();
+  });
+
+  it('opens the recurring edit route when a row is tapped', async () => {
+    (listRecurring as jest.Mock).mockResolvedValue([recurringPayment(5, 7, 'Rent')]);
+    await renderWithProviders(<AccountDetailScreen />);
+    fireEvent.press(await screen.findByText('Rent'));
+    expect(mockPush).toHaveBeenCalledWith({ pathname: '/recurring/[id]', params: { id: 5 } });
+  });
+
+  it('keeps Delete disabled until the recurring payments have loaded', async () => {
+    let finish: (rows: RecurringPayment[]) => void = () => {};
+    (listRecurring as jest.Mock).mockReturnValue(
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+    );
+    await renderWithProviders(<AccountDetailScreen />);
+    const button = await screen.findByRole('button', { name: en.accounts.delete });
+    expect(button.props.accessibilityState?.disabled).toBe(true);
+    await act(async () => {
+      finish([]);
+    });
+    await waitFor(() =>
+      expect(
+        screen.getByRole('button', { name: en.accounts.delete }).props.accessibilityState
+          ?.disabled,
+      ).toBeFalsy(),
+    );
+  });
+
+  const txRow = (id: number) => ({
+    id,
+    accountId: 7,
+    kind: 'expense' as const,
+    amountCents: 100,
+    date: new Date(Date.now() - id * 1000).toISOString(),
+    note: null,
+    recurringId: null,
+    createdAt: '2026-01-01T00:00:00.000Z',
+  });
+
+  it.each([
+    ['one recurring payment', 0, 1, 'This deletes the account along with 1 recurring payment. This cannot be undone.'],
+    ['several recurring payments', 0, 3, 'This deletes the account along with 3 recurring payments. This cannot be undone.'],
+    ['transactions and recurring payments', 2, 1, 'This deletes the account along with 2 transactions and 1 recurring payment. This cannot be undone.'],
+    ['one of each', 1, 2, 'This deletes the account along with 1 transaction and 2 recurring payments. This cannot be undone.'],
+  ])('the delete confirmation counts %s', async (_label, transactions, payments, message) => {
+    (listTransactions as jest.Mock).mockResolvedValue(
+      Array.from({ length: transactions }, (_, index) => txRow(index + 1)),
+    );
+    (listRecurring as jest.Mock).mockResolvedValue(
+      Array.from({ length: payments }, (_, index) => recurringPayment(index + 1, 7, `Pay ${index}`)),
+    );
+    await renderWithProviders(<AccountDetailScreen />);
+    await screen.findByText('Pay 0');
+    await waitFor(() =>
+      expect(
+        screen.getByRole('button', { name: en.accounts.delete }).props.accessibilityState
+          ?.disabled,
+      ).toBeFalsy(),
+    );
+    fireEvent.press(screen.getByText(en.accounts.delete));
+    expect(await screen.findByText(message)).toBeTruthy();
+  });
+
+  it('Spanish plurals for the delete confirmation', async () => {
+    await i18n.changeLanguage('es');
+    try {
+      (listTransactions as jest.Mock).mockResolvedValue([txRow(1)]);
+      (listRecurring as jest.Mock).mockResolvedValue([
+        recurringPayment(1, 7, 'Renta'),
+        recurringPayment(2, 7, 'Gimnasio'),
+      ]);
+      await renderWithProviders(<AccountDetailScreen />);
+      await screen.findByText('Renta');
+      await waitFor(() =>
+        expect(
+          screen.getByRole('button', { name: es.accounts.delete }).props.accessibilityState
+            ?.disabled,
+        ).toBeFalsy(),
+      );
+      fireEvent.press(screen.getByText(es.accounts.delete));
+      expect(
+        await screen.findByText(
+          'Esto elimina la cuenta junto con 1 transacción y 2 pagos recurrentes. No se puede deshacer.',
+        ),
+      ).toBeTruthy();
+    } finally {
+      await act(async () => {
+        await i18n.changeLanguage('en');
+      });
+    }
+  });
+
+  it('Confirm removes the account and its recurring payments from the stores', async () => {
+    (listRecurring as jest.Mock).mockResolvedValue([
+      recurringPayment(1, 7, 'Rent'),
+      recurringPayment(2, 9, 'Elsewhere'),
+    ]);
+    (removeAccount as jest.Mock).mockResolvedValue(undefined);
+    await renderWithProviders(<AccountDetailScreen />);
+    await screen.findByText('Rent');
+    await waitFor(() =>
+      expect(
+        screen.getByRole('button', { name: en.accounts.delete }).props.accessibilityState
+          ?.disabled,
+      ).toBeFalsy(),
+    );
+    fireEvent.press(screen.getByText(en.accounts.delete));
+    await screen.findByText(en.accounts.deleteTitle);
+    const deletes = screen.getAllByText(en.accounts.delete);
+    fireEvent.press(deletes[deletes.length - 1]);
+
+    await waitFor(() => expect(mockBack).toHaveBeenCalledTimes(1));
+    expect(useRecurringStore.getState().payments.map((item) => item.id)).toEqual([2]);
+  });
 });
 
 describe('account detail screen', () => {

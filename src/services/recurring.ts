@@ -1,0 +1,473 @@
+import { getAccount, getDefaultCurrency, NAME_MAX_LENGTH } from './accounts';
+import { initDb } from './db';
+import { localDayKey } from './day-groups';
+import { parseAmountToCents } from './money';
+import type { AmountParseError } from './money';
+import { NOTE_MAX_LENGTH } from './transactions';
+
+export { NAME_MAX_LENGTH, NOTE_MAX_LENGTH };
+
+export const UNITS = ['day', 'week', 'month', 'year'] as const;
+export type Unit = (typeof UNITS)[number];
+export const INTERVAL_MAX = 365;
+
+// Schedule dates are calendar days ("YYYY-MM-DD"), not timestamps. They compare
+// correctly as text.
+export type Day = string;
+
+export type RecurringPayment = {
+  id: number;
+  // null: not assigned to an account (it uses the default currency).
+  accountId: number | null;
+  name: string;
+  amountCents: number;
+  note: string | null;
+  // "Every [interval] [unit]".
+  interval: number;
+  unit: Unit;
+  // The first occurrence, and the anchor of every later one.
+  startDate: Day;
+  // No occurrence is after it; null means indefinite.
+  endDate: Day | null;
+  // Comma-separated subset of 3,2,1,0; empty means no reminders.
+  notifyDaysBefore: string;
+  active: boolean;
+  // The last occurrence paid or skipped; null when never.
+  lastConfirmedAt: Day | null;
+  // ISO UTC.
+  createdAt: string;
+};
+
+export type RecurringInput = {
+  accountId: number | null;
+  name: string;
+  // What the user typed; converted to cents by parseAmountToCents.
+  amount: string;
+  // What the user typed: a whole number from 1 to 365.
+  interval: string;
+  unit: string;
+  startDate: Day;
+  endDate: Day | null;
+  note: string;
+  active: boolean;
+};
+
+export type RecurringValidationCode =
+  | 'accountNotFound'
+  | 'nameRequired'
+  | 'nameTooLong'
+  | 'amountRequired'
+  | 'amountInvalid'
+  | 'amountNotPositive'
+  | 'amountTooLarge'
+  | 'amountDecimalsNotAllowed'
+  | 'amountTooManyDecimals'
+  | 'intervalRequired'
+  | 'intervalInvalid'
+  | 'intervalOutOfRange'
+  | 'invalidUnit'
+  | 'invalidStartDate'
+  | 'startDateInPast'
+  | 'invalidEndDate'
+  | 'endBeforeStart'
+  | 'noteTooLong';
+
+export class RecurringValidationError extends Error {
+  code: RecurringValidationCode;
+
+  constructor(code: RecurringValidationCode) {
+    super(code);
+    this.name = 'RecurringValidationError';
+    this.code = code;
+  }
+}
+
+type RecurringRow = {
+  id: number;
+  account_id: number | null;
+  name: string;
+  amount_cents: number;
+  note: string | null;
+  interval: number;
+  unit: string;
+  start_date: string;
+  end_date: string | null;
+  notify_days_before: string;
+  active: number;
+  last_confirmed_at: string | null;
+  created_at: string;
+};
+
+const COLUMNS =
+  'id, account_id, name, amount_cents, note, interval, unit, start_date, end_date, notify_days_before, active, last_confirmed_at, created_at';
+
+const AMOUNT_CODES: Record<AmountParseError, RecurringValidationCode> = {
+  empty: 'amountRequired',
+  invalid: 'amountInvalid',
+  notPositive: 'amountNotPositive',
+  tooLarge: 'amountTooLarge',
+  decimalsNotAllowed: 'amountDecimalsNotAllowed',
+  tooManyDecimals: 'amountTooManyDecimals',
+};
+
+// ---- Calendar days -------------------------------------------------------
+// All arithmetic is on year/month/day numbers and whole day counts from
+// Date.UTC (which has no daylight saving), never on local timestamps, so a
+// DST change cannot move an occurrence.
+
+const MS_PER_DAY = 86_400_000;
+
+function pad(value: number, length = 2): string {
+  return String(value).padStart(length, '0');
+}
+
+function formatDay(year: number, month: number, day: number): Day {
+  return `${pad(year, 4)}-${pad(month)}-${pad(day)}`;
+}
+
+function parseDay(value: Day): { year: number; month: number; day: number } {
+  const [year, month, day] = value.split('-').map(Number);
+  return { year, month, day };
+}
+
+function daysInMonth(year: number, month: number): number {
+  return new Date(Date.UTC(year, month, 0)).getUTCDate();
+}
+
+function dayNumber(value: Day): number {
+  const { year, month, day } = parseDay(value);
+  return Math.round(Date.UTC(year, month - 1, day) / MS_PER_DAY);
+}
+
+function fromDayNumber(count: number): Day {
+  const date = new Date(count * MS_PER_DAY);
+  return formatDay(date.getUTCFullYear(), date.getUTCMonth() + 1, date.getUTCDate());
+}
+
+// True for a real calendar day written as YYYY-MM-DD.
+export function isDay(value: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const { year, month, day } = parseDay(value);
+  return month >= 1 && month <= 12 && day >= 1 && day <= daysInMonth(year, month);
+}
+
+// The device's local calendar day of a Date.
+export function toDay(date: Date): Day {
+  return localDayKey(date);
+}
+
+// Local midnight of a calendar day.
+export function dayToDate(value: Day): Date {
+  const { year, month, day } = parseDay(value);
+  return new Date(year, month - 1, day);
+}
+
+// ---- Occurrences ---------------------------------------------------------
+
+type Schedule = Pick<RecurringPayment, 'interval' | 'unit' | 'startDate' | 'endDate'>;
+
+// The k-th occurrence (k = 0 is the start date), or null when it falls after
+// the end date. Always computed from the start date, so a clamped month does
+// not drift (Jan 31, Feb 28, Mar 31).
+export function occurrenceAt(schedule: Schedule, k: number): Day | null {
+  const { interval, unit, startDate, endDate } = schedule;
+  let result: Day;
+  if (unit === 'day' || unit === 'week') {
+    const step = unit === 'day' ? interval : interval * 7;
+    result = fromDayNumber(dayNumber(startDate) + k * step);
+  } else {
+    const { year, month, day } = parseDay(startDate);
+    if (unit === 'month') {
+      const months = year * 12 + (month - 1) + k * interval;
+      const targetYear = Math.floor(months / 12);
+      const targetMonth = (months % 12) + 1;
+      result = formatDay(targetYear, targetMonth, Math.min(day, daysInMonth(targetYear, targetMonth)));
+    } else {
+      const targetYear = year + k * interval;
+      result = formatDay(targetYear, month, Math.min(day, daysInMonth(targetYear, month)));
+    }
+  }
+  return endDate !== null && result > endDate ? null : result;
+}
+
+// Same as occurrenceAt but ignoring the end date.
+function rawOccurrence(schedule: Schedule, k: number): Day {
+  return occurrenceAt({ ...schedule, endDate: null }, k)!;
+}
+
+// The index of the latest occurrence on or before `bound` (ignoring the end
+// date), or -1 when the start date is after it.
+function latestIndexOnOrBefore(schedule: Schedule, bound: Day): number {
+  if (schedule.startDate > bound) return -1;
+  const { interval, unit, startDate } = schedule;
+  let k: number;
+  if (unit === 'day' || unit === 'week') {
+    const step = unit === 'day' ? interval : interval * 7;
+    k = Math.floor((dayNumber(bound) - dayNumber(startDate)) / step);
+  } else {
+    const start = parseDay(startDate);
+    const end = parseDay(bound);
+    const span =
+      unit === 'month'
+        ? (end.year - start.year) * 12 + (end.month - start.month)
+        : end.year - start.year;
+    k = Math.floor(span / interval);
+  }
+  // Month-end clamping can make the estimate off by one either way.
+  while (k > 0 && rawOccurrence(schedule, k) > bound) k--;
+  while (rawOccurrence(schedule, k + 1) <= bound) k++;
+  return k;
+}
+
+export type ScheduleState =
+  | { kind: 'current'; date: Day }
+  | { kind: 'upcoming'; date: Day }
+  | { kind: 'finished' };
+
+// What the payment is waiting on, given today's local calendar day:
+// - current: the latest occurrence on or before today (and not after the end
+//   date) that is after the last confirmed one. Only one is ever due or overdue;
+//   earlier missed ones are dropped. The last occurrence before the end date
+//   stays current until paid or skipped.
+// - upcoming: otherwise, the first occurrence after today (and after the last
+//   confirmed one).
+// - finished: no occurrence is left.
+export function scheduleState(
+  payment: Schedule & { lastConfirmedAt: Day | null },
+  today: Day,
+): ScheduleState {
+  const { lastConfirmedAt, endDate } = payment;
+  const bound = endDate !== null && endDate < today ? endDate : today;
+  const k0 = latestIndexOnOrBefore(payment, bound);
+  if (k0 >= 0) {
+    const date = rawOccurrence(payment, k0);
+    if (lastConfirmedAt === null || date > lastConfirmedAt) return { kind: 'current', date };
+  }
+  let k = k0 + 1;
+  for (;;) {
+    const date = occurrenceAt(payment, k);
+    if (date === null) return { kind: 'finished' };
+    if (lastConfirmedAt === null || date > lastConfirmedAt) return { kind: 'upcoming', date };
+    k++;
+  }
+}
+
+// The day a row shows as "next": the current or upcoming occurrence. Null for
+// an inactive or finished payment.
+export function nextDueDay(
+  payment: Schedule & { active: boolean; lastConfirmedAt: Day | null },
+  now: Date = new Date(),
+): Day | null {
+  if (!payment.active) return null;
+  const state = scheduleState(payment, toDay(now));
+  return state.kind === 'finished' ? null : state.date;
+}
+
+// True when an end date is set and falls before the second occurrence: the
+// payment can only happen once.
+export function isOnceOnly(
+  schedule: Pick<Schedule, 'interval' | 'unit' | 'startDate'> & { endDate: Day | null },
+): boolean {
+  if (schedule.endDate === null) return false;
+  return occurrenceAt(schedule, 1) === null;
+}
+
+// Active, unfinished payments first by next due day then id; the rest (inactive
+// or finished) last by name.
+export function sortRecurring(
+  payments: RecurringPayment[],
+  now: Date = new Date(),
+): RecurringPayment[] {
+  const due = new Map(payments.map((item) => [item.id, nextDueDay(item, now)]));
+  return [...payments].sort((a, b) => {
+    const left = due.get(a.id) ?? null;
+    const right = due.get(b.id) ?? null;
+    if ((left === null) !== (right === null)) return left === null ? 1 : -1;
+    if (left !== null && right !== null) {
+      if (left !== right) return left < right ? -1 : 1;
+      return a.id - b.id;
+    }
+    const byName = a.name.localeCompare(b.name);
+    return byName !== 0 ? byName : a.id - b.id;
+  });
+}
+
+// ---- Validation ----------------------------------------------------------
+
+export function isUnit(value: string): value is Unit {
+  return (UNITS as readonly string[]).includes(value);
+}
+
+// The typed interval as a number, or the reason it is not one.
+export function parseInterval(
+  value: string,
+): { ok: true; interval: number } | { ok: false; code: RecurringValidationCode } {
+  const text = value.trim();
+  if (text.length === 0) return { ok: false, code: 'intervalRequired' };
+  if (!/^\d+$/.test(text)) return { ok: false, code: 'intervalInvalid' };
+  const interval = Number(text);
+  if (interval < 1 || interval > INTERVAL_MAX) return { ok: false, code: 'intervalOutOfRange' };
+  return { ok: true, interval };
+}
+
+// Returns the first problem found, or null when the input is valid.
+// - currency: the chosen account's currency, or the default currency when no
+//   account is chosen. It is null only when a chosen account does not exist.
+// - today: the local calendar day; a start date before it is rejected.
+// - originalStartDate: when editing, the stored start date. Left unchanged it
+//   stays valid even if it is in the past; a changed one must be today or later.
+// The form and the service both call this, so they cannot disagree.
+export function validateRecurringInput(
+  input: RecurringInput,
+  currency: string | null,
+  today: Day = toDay(new Date()),
+  originalStartDate?: Day,
+): RecurringValidationCode | null {
+  const name = input.name.trim();
+  if (name.length === 0) return 'nameRequired';
+  if (name.length > NAME_MAX_LENGTH) return 'nameTooLong';
+  if (currency === null) return 'accountNotFound';
+  const amount = parseAmountToCents(input.amount, currency);
+  if (!amount.ok) return AMOUNT_CODES[amount.code];
+  const interval = parseInterval(input.interval);
+  if (!interval.ok) return interval.code;
+  if (!isUnit(input.unit)) return 'invalidUnit';
+  if (!isDay(input.startDate)) return 'invalidStartDate';
+  if (input.startDate < today && input.startDate !== originalStartDate) return 'startDateInPast';
+  if (input.endDate !== null) {
+    if (!isDay(input.endDate)) return 'invalidEndDate';
+    if (input.endDate < input.startDate) return 'endBeforeStart';
+  }
+  if (input.note.trim().length > NOTE_MAX_LENGTH) return 'noteTooLong';
+  return null;
+}
+
+// ---- Storage -------------------------------------------------------------
+
+function toRecurring(row: RecurringRow): RecurringPayment {
+  return {
+    id: row.id,
+    accountId: row.account_id,
+    name: row.name,
+    amountCents: row.amount_cents,
+    note: row.note,
+    interval: row.interval,
+    unit: row.unit as Unit,
+    startDate: row.start_date,
+    endDate: row.end_date,
+    notifyDaysBefore: row.notify_days_before,
+    active: row.active === 1,
+    lastConfirmedAt: row.last_confirmed_at,
+    createdAt: row.created_at,
+  };
+}
+
+// Validates and parses the input against the chosen account, or against the
+// default currency when no account is chosen.
+async function parse(input: RecurringInput, today: Day, originalStartDate?: Day) {
+  const account = input.accountId === null ? null : await getAccount(input.accountId);
+  if (input.accountId !== null && !account) throw new RecurringValidationError('accountNotFound');
+  const currency = account ? account.currency : await getDefaultCurrency();
+  const code = validateRecurringInput(input, currency, today, originalStartDate);
+  if (code) throw new RecurringValidationError(code);
+  const amount = parseAmountToCents(input.amount, currency);
+  if (!amount.ok) throw new RecurringValidationError(AMOUNT_CODES[amount.code]);
+  const interval = parseInterval(input.interval);
+  if (!interval.ok) throw new RecurringValidationError(interval.code);
+  const trimmed = input.note.trim();
+  return {
+    accountId: account ? account.id : null,
+    name: input.name.trim(),
+    amountCents: amount.cents,
+    note: trimmed.length > 0 ? trimmed : null,
+    interval: interval.interval,
+    unit: input.unit as Unit,
+    startDate: input.startDate,
+    endDate: input.endDate,
+    active: input.active,
+  };
+}
+
+export async function listRecurring(): Promise<RecurringPayment[]> {
+  const db = await initDb();
+  const rows = await db.getAllAsync<RecurringRow>(
+    `SELECT ${COLUMNS} FROM recurring_payments ORDER BY id`,
+  );
+  return rows.map(toRecurring);
+}
+
+export async function getRecurring(id: number): Promise<RecurringPayment | null> {
+  const db = await initDb();
+  const row = await db.getFirstAsync<RecurringRow>(
+    `SELECT ${COLUMNS} FROM recurring_payments WHERE id = ?`,
+    id,
+  );
+  return row ? toRecurring(row) : null;
+}
+
+export async function createRecurring(
+  input: RecurringInput,
+  now: Date = new Date(),
+): Promise<RecurringPayment> {
+  const parsed = await parse(input, toDay(now));
+  const createdAt = now.toISOString();
+  const db = await initDb();
+  const result = await db.runAsync(
+    "INSERT INTO recurring_payments (account_id, name, amount_cents, note, interval, unit, start_date, end_date, notify_days_before, active, last_confirmed_at, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, '', ?, NULL, ?)",
+    parsed.accountId,
+    parsed.name,
+    parsed.amountCents,
+    parsed.note,
+    parsed.interval,
+    parsed.unit,
+    parsed.startDate,
+    parsed.endDate,
+    parsed.active ? 1 : 0,
+    createdAt,
+  );
+  return {
+    id: result.lastInsertRowId,
+    ...parsed,
+    notifyDaysBefore: '',
+    lastConfirmedAt: null,
+    createdAt,
+  };
+}
+
+// Changes account, name, amount, schedule, note and active. notify_days_before,
+// last_confirmed_at and created_at never change here. The next due date is
+// computed from the schedule, so changing interval, unit or start date moves it
+// and renames or amount edits do not. A start date that is unchanged may be in
+// the past; a changed one must be today or later. Throws when the payment does
+// not exist.
+export async function updateRecurring(
+  id: number,
+  input: RecurringInput,
+  now: Date = new Date(),
+): Promise<RecurringPayment> {
+  const existing = await getRecurring(id);
+  if (!existing) throw new Error(`Recurring payment ${id} not found`);
+  const parsed = await parse(input, toDay(now), existing.startDate);
+  const db = await initDb();
+  const result = await db.runAsync(
+    'UPDATE recurring_payments SET account_id = ?, name = ?, amount_cents = ?, note = ?, interval = ?, unit = ?, start_date = ?, end_date = ?, active = ? WHERE id = ?',
+    parsed.accountId,
+    parsed.name,
+    parsed.amountCents,
+    parsed.note,
+    parsed.interval,
+    parsed.unit,
+    parsed.startDate,
+    parsed.endDate,
+    parsed.active ? 1 : 0,
+    id,
+  );
+  if (result.changes === 0) throw new Error(`Recurring payment ${id} not found`);
+  return { ...existing, ...parsed };
+}
+
+// Linked transactions stay: their recurring_id becomes NULL (foreign key).
+export async function removeRecurring(id: number): Promise<void> {
+  const db = await initDb();
+  await db.runAsync('DELETE FROM recurring_payments WHERE id = ?', id);
+}

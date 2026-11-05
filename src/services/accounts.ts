@@ -278,6 +278,7 @@ export async function removeAccount(id: number): Promise<void> {
   // One database transaction: a failure removes neither.
   await db.withTransactionAsync(async () => {
     await db.runAsync('DELETE FROM transactions WHERE account_id = ?', id);
+    await db.runAsync('DELETE FROM recurring_payments WHERE account_id = ?', id);
     await db.runAsync('DELETE FROM accounts WHERE id = ?', id);
   });
 }

@@ -3,8 +3,6 @@ import { useTranslation } from 'react-i18next';
 
 import { Fab } from '@/components/ui';
 
-const noop = () => {};
-
 export function AddFab() {
   const { t } = useTranslation();
   const focused = useIsFocused();
@@ -21,7 +19,12 @@ export function AddFab() {
           icon: 'cash-plus',
           onPress: () => router.push('/transaction/new'),
         },
-        { key: 'recurring', label: t('fab.addRecurring'), icon: 'calendar-sync', onPress: noop },
+        {
+          key: 'recurring',
+          label: t('fab.addRecurring'),
+          icon: 'calendar-sync',
+          onPress: () => router.push('/recurring/new'),
+        },
         {
           key: 'account',
           label: t('fab.addAccount'),

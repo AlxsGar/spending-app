@@ -164,11 +164,16 @@ const V4_TRANSACTIONS = `CREATE TABLE transactions_new (
 ALTER TABLE transactions_new RENAME TO transactions;
 CREATE INDEX idx_transactions_account_date ON transactions (account_id, date)`;
 
-// Creates the schema of an older release (1 to 4) and sets its user_version.
-export function seedSchema(db: RealSqlite, version: 1 | 2 | 3 | 4): void {
+// v5 added the balance anchor columns to accounts.
+const V5_ACCOUNTS = `ALTER TABLE accounts ADD COLUMN balance_anchor_cents INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE accounts ADD COLUMN balance_anchor_at TEXT`;
+
+// Creates the schema of an older release (1 to 5) and sets its user_version.
+export function seedSchema(db: RealSqlite, version: 1 | 2 | 3 | 4 | 5): void {
   db.exec(V1);
   if (version >= 2) db.exec(V2);
   if (version === 3) db.exec(V3);
   if (version >= 4) db.exec(V4_TRANSACTIONS);
+  if (version >= 5) db.exec(V5_ACCOUNTS);
   db.exec(`PRAGMA user_version = ${version}`);
 }

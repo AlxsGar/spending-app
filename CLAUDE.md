@@ -33,12 +33,15 @@ If one of these scripts is missing, say so. Do not invent a replacement.
 4. Every user-visible string goes through i18next, in both `en` and `es`,
    from the first component.
 5. Money is stored as integer cents. Format it only at the display edge.
-6. Dates are stored as ISO strings in UTC.
+6. Dates are stored as ISO strings in UTC. Schedule dates are calendar days,
+   not timestamps.
 7. Use React Native Paper's components whenever one exists for the need,
    always through the wrappers in `src/components/ui/`. Build a custom
    component only when Paper has nothing suitable, and say so in the slice
    report. Custom wrappers are still built from Paper primitives inside;
    only the composition is ours.
+8. Every database upgrade is tested against real SQLite (node:sqlite),
+   including rollback.
 
 ## Workflow rules
 
