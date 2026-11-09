@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { ScrollView } from 'react-native';
 
 import { AccountCards } from '@/components/account-cards';
+import { RecurringStack } from '@/components/recurring-stack';
 import { TabScreen } from '@/components/tab-screen';
 import { TransactionRow } from '@/components/transaction-row';
 import {
@@ -61,6 +62,7 @@ export default function HomeScreen() {
           balances={balances}
           onOpen={(id) => router.push({ pathname: '/account/[id]', params: { id } })}
         />
+        <RecurringStack />
         <SectionHeader title={t('transactions.latest')} />
         {latest.length === 0 ? (
           <AppText color="textSecondary">{t('transactions.latestEmpty')}</AppText>

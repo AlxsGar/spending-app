@@ -29,10 +29,12 @@ export const sizes = {
   touchTarget: 48,
   fab: 56,
   icon: 24,
+  iconSmall: 16,
   iconLarge: 40,
   accountCard: 160,
   accountCardHeight: 176,
   dialogList: 320,
+  badge: 24,
   successIcon: 48,
   successCardMinWidth: 200,
 } as const;
@@ -44,6 +46,34 @@ export const motion = {
   springFriction: 6,
   springTension: 80,
   successStartScale: 0.7,
+  // Swiping a stack card right: past this distance (or this speed) it is
+  // dismissed; the card slides off in swipeExitDuration milliseconds.
+  swipeDistance: 96,
+  swipeVelocity: 800,
+  swipeExitDuration: 200,
+  // How far (in px) the pointer must move sideways before the swipe starts, so
+  // a tap or a vertical scroll is not taken for one.
+  swipeStart: 16,
+} as const;
+
+// The card deck (CardStack): up to two textless layers peek out below the top
+// card. Layer n (1 is the nearest) sits n * layerOffset px lower, is
+// layerWidths[n - 1] as wide as the top card (centered), and is the text color
+// at layerTints[n - 1] opacity over the screen background (the same derived
+// overlay the dividers use; the surface color is too close to the background to
+// show). The radius is the shared card radius. The
+// count badge sits on the top card's top-right corner, inside the card, badgeInset
+// px from the top and the right edge (never outside the deck's bounds, so no
+// parent can clip it). The card's first line leaves room for it.
+// settleDuration is how long the next card (and the layers) take to move up
+// after a dismissal.
+export const deck = {
+  maxLayers: 2,
+  layerOffset: 6,
+  layerWidths: [0.96, 0.92],
+  layerTints: [0.12, 0.07],
+  badgeInset: 8,
+  settleDuration: 220,
 } as const;
 
 // Fixed-size elements grow with the system font scale, up to these caps. Text

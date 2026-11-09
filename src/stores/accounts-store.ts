@@ -66,6 +66,12 @@ export const useAccountsStore = create<AccountsState>((set, get) => ({
       await removeAccount(id);
       // The service deleted the account's transactions with it.
       useTransactionsStore.getState().dropForAccount(id);
+      // The cascade deleted the account's recurring payments, and the database
+      // cleared recurring_id on other accounts' transactions linked to them.
+      const transactionsStore = useTransactionsStore.getState();
+      for (const payment of useRecurringStore.getState().payments) {
+        if (payment.accountId === id) transactionsStore.unlinkRecurring(payment.id);
+      }
       useRecurringStore.getState().dropForAccount(id);
       set((state) => ({
         accounts: state.accounts.filter((item) => item.id !== id),

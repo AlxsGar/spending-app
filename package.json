@@ -54,6 +54,9 @@
   },
   "private": true,
   "jest": {
-    "preset": "jest-expo"
+    "preset": "jest-expo",
+    "setupFiles": [
+      "<rootDir>/src/test/setup.ts"
+    ]
   }
 }

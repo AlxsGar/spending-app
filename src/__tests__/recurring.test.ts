@@ -22,6 +22,7 @@ type Row = {
   notify_days_before: string;
   active: number;
   last_confirmed_at: string | null;
+  dismissed_at: string | null;
   created_at: string;
 };
 
@@ -75,6 +76,7 @@ const mockDb = {
       notify_days_before: '',
       active,
       last_confirmed_at: null,
+      dismissed_at: null,
       created_at: createdAt,
     });
     return { lastInsertRowId: id, changes: 1 };
@@ -135,6 +137,7 @@ describe('recurring service', () => {
       notifyDaysBefore: '',
       active: true,
       lastConfirmedAt: null,
+      dismissedAt: null,
       createdAt: now.toISOString(),
     });
     expect(rows[0]).toMatchObject({

@@ -1,4 +1,5 @@
 import { useAccountsStore } from '@/stores/accounts-store';
+import { useRecurringStore } from '@/stores/recurring-store';
 import { useTransactionsStore } from '@/stores/transactions-store';
 
 const mockList = jest.fn();
@@ -84,6 +85,7 @@ describe('accounts store', () => {
       date: '2026-03-01T00:00:00.000Z',
       note: null,
       recurringId: null,
+      recurringOccurrence: null,
       createdAt: '2026-03-01T00:00:00.000Z',
     });
     useAccountsStore.setState({ accounts: [make(1, 'A'), make(2, 'B')] as never });
@@ -98,6 +100,70 @@ describe('accounts store', () => {
     mockRemove.mockResolvedValue(undefined);
     await expect(useAccountsStore.getState().remove(1)).resolves.toBe(true);
     expect(useTransactionsStore.getState().transactions.map((item) => item.id)).toEqual([2]);
+  });
+
+  it('clears recurringId in memory on OTHER accounts transactions linked to the deleted account payments', async () => {
+    const tx = (id: number, accountId: number, recurringId: number | null) => ({
+      id,
+      accountId,
+      kind: 'expense' as const,
+      amountCents: 100,
+      date: '2026-03-01T00:00:00.000Z',
+      note: null,
+      recurringId,
+      recurringOccurrence: recurringId === null ? null : '2026-03-15',
+      createdAt: '2026-03-01T00:00:00.000Z',
+    });
+    const payment = (id: number, accountId: number | null) => ({
+      id,
+      accountId,
+      name: `Payment ${id}`,
+      amountCents: 100,
+      note: null,
+      interval: 1,
+      unit: 'month' as const,
+      startDate: '2026-01-15',
+      endDate: null,
+      notifyDaysBefore: '',
+      active: true,
+      lastConfirmedAt: null,
+      dismissedAt: null,
+      createdAt: '2026-01-01T00:00:00.000Z',
+    });
+    useAccountsStore.setState({ accounts: [make(1, 'A'), make(2, 'B')] as never });
+    // Payment 10 belongs to account 1 (deleted); 11 to account 2; 12 to none.
+    useRecurringStore.setState({
+      payments: [payment(10, 1), payment(11, 2), payment(12, null)],
+      status: 'ready',
+    });
+    useTransactionsStore.setState({
+      transactions: [tx(1, 2, 10), tx(2, 2, 11), tx(3, 2, 12), tx(4, 1, 10), tx(5, 2, null)],
+      status: 'ready',
+    });
+
+    mockRemove.mockRejectedValueOnce(new Error('disk'));
+    await expect(useAccountsStore.getState().remove(1)).resolves.toBe(false);
+    // Nothing changed on failure.
+    expect(useTransactionsStore.getState().transactions.map((item) => item.recurringId)).toEqual([
+      10, 11, 12, 10, null,
+    ]);
+
+    mockRemove.mockResolvedValue(undefined);
+    await expect(useAccountsStore.getState().remove(1)).resolves.toBe(true);
+    // Account 1's own transaction (4) went with it; the database cleared the link
+    // on transaction 1 and kept the occurrence, and so does the store.
+    expect(
+      useTransactionsStore
+        .getState()
+        .transactions.sort((a, b) => a.id - b.id)
+        .map((item) => [item.id, item.recurringId, item.recurringOccurrence]),
+    ).toEqual([
+      [1, null, '2026-03-15'],
+      [2, 11, '2026-03-15'],
+      [3, 12, '2026-03-15'],
+      [5, null, null],
+    ]);
+    expect(useRecurringStore.getState().payments.map((item) => item.id)).toEqual([11, 12]);
   });
 
   it('flags saveError and keeps state when a write fails', async () => {

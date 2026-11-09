@@ -1,6 +1,7 @@
 import { getSetting, initDb } from './db';
 import { parseAmountToCents } from './money';
 import type { AmountParseError } from './money';
+import { serialized } from './write-queue';
 
 export const ACCOUNT_ICONS = [
   'bank',
@@ -273,13 +274,17 @@ export async function updateAccount(
   return updated;
 }
 
-export async function removeAccount(id: number): Promise<void> {
-  const db = await initDb();
-  // One database transaction: a failure removes neither.
-  await db.withTransactionAsync(async () => {
-    await db.runAsync('DELETE FROM transactions WHERE account_id = ?', id);
-    await db.runAsync('DELETE FROM recurring_payments WHERE account_id = ?', id);
-    await db.runAsync('DELETE FROM accounts WHERE id = ?', id);
+// Queued with the other explicit write transactions (see write-queue.ts), so it
+// cannot interleave with a payment or an undo.
+export function removeAccount(id: number): Promise<void> {
+  return serialized(async () => {
+    const db = await initDb();
+    // One database transaction: a failure removes neither.
+    await db.withTransactionAsync(async () => {
+      await db.runAsync('DELETE FROM transactions WHERE account_id = ?', id);
+      await db.runAsync('DELETE FROM recurring_payments WHERE account_id = ?', id);
+      await db.runAsync('DELETE FROM accounts WHERE id = ?', id);
+    });
   });
 }
 

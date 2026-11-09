@@ -168,12 +168,48 @@ CREATE INDEX idx_transactions_account_date ON transactions (account_id, date)`;
 const V5_ACCOUNTS = `ALTER TABLE accounts ADD COLUMN balance_anchor_cents INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE accounts ADD COLUMN balance_anchor_at TEXT`;
 
-// Creates the schema of an older release (1 to 5) and sets its user_version.
-export function seedSchema(db: RealSqlite, version: 1 | 2 | 3 | 4 | 5): void {
+// v6 added recurring_payments and rebuilt transactions so recurring_id has a
+// foreign key (ON DELETE SET NULL); same rename trick as v4.
+const V6_RECURRING = `CREATE TABLE recurring_payments (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  account_id INTEGER REFERENCES accounts(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  amount_cents INTEGER NOT NULL CHECK (amount_cents > 0),
+  note TEXT,
+  interval INTEGER NOT NULL CHECK (interval >= 1),
+  unit TEXT NOT NULL CHECK (unit IN ('day','week','month','year')),
+  start_date TEXT NOT NULL,
+  end_date TEXT,
+  notify_days_before TEXT NOT NULL DEFAULT '',
+  active INTEGER NOT NULL DEFAULT 1,
+  last_confirmed_at TEXT,
+  created_at TEXT NOT NULL,
+  CHECK (end_date IS NULL OR end_date >= start_date)
+);
+CREATE INDEX idx_recurring_payments_account ON recurring_payments (account_id)`;
+const V6_TRANSACTIONS = `CREATE TABLE transactions_new (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  account_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+  kind TEXT NOT NULL CHECK (kind IN ('expense','income')),
+  amount_cents INTEGER NOT NULL CHECK (amount_cents > 0),
+  date TEXT NOT NULL,
+  note TEXT,
+  recurring_id INTEGER REFERENCES recurring_payments(id) ON DELETE SET NULL,
+  created_at TEXT NOT NULL
+);
+ALTER TABLE transactions_new RENAME TO transactions;
+CREATE INDEX idx_transactions_account_date ON transactions (account_id, date)`;
+
+// Creates the schema of an older release (1 to 6) and sets its user_version.
+export function seedSchema(db: RealSqlite, version: 1 | 2 | 3 | 4 | 5 | 6): void {
   db.exec(V1);
   if (version >= 2) db.exec(V2);
   if (version === 3) db.exec(V3);
-  if (version >= 4) db.exec(V4_TRANSACTIONS);
+  if (version === 4 || version === 5) db.exec(V4_TRANSACTIONS);
   if (version >= 5) db.exec(V5_ACCOUNTS);
+  if (version >= 6) {
+    db.exec(V6_RECURRING);
+    db.exec(V6_TRANSACTIONS);
+  }
   db.exec(`PRAGMA user_version = ${version}`);
 }

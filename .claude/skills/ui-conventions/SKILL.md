@@ -109,6 +109,37 @@ confirm it with the shared success card.
 - It shows over the screen the user returns to, so it never stacks on another
   modal.
 
+## Card deck
+
+A short list of cards the user works through one at a time (the recurring
+payments on Home and Movements) is a deck. Always use the `CardStack` wrapper
+in `src/components/ui/`; never re-implement it. Paper has no deck, so it is a
+custom component built from Paper `Surface` and `TouchableRipple`.
+
+- Only the top card is readable. Its layout: a small secondary line on top
+  (`textSecondary`, for example "BBVA · Due Nov 1"), then the main line (the
+  name, one line, ellipsized) with the value on the right (`AmountText`),
+  centered with the main line. An overdue card says so in `alert` with the
+  alert icon and the word ("Overdue · Nov 1"), never by color alone.
+- Up to two layers peek out below the top card: no text, hidden from screen
+  readers, not touchable. Their offset, widths and tints are the theme's
+  `deck` values (6 px lower per layer, 96% and 92% as wide, filled with the
+  `text` color at 12% and 7% over the background, the same derived overlay as
+  the dividers; the surface color is too close to the background to show);
+  nothing inline. Two cards show one layer, three or more show two, one
+  card shows none, and a summary card ("N recurring payments") is a plain
+  `AppCard` with no layers.
+- A count badge (the `AppBadge` wrapper) sits inside the top card's top-right
+  corner, `deck.badgeInset` from the top and the right edge, only with two or
+  more cards. It never hangs outside the deck's bounds (a parent such as a
+  scroll view would clip it). The card's first line leaves room for it and
+  ellipsizes before it; it never covers the amount. No "and N more" text.
+- Swipe the top card right to dismiss it, or tap it for the actions. Both need
+  an accessible route: the modal buttons and a "dismiss" accessibility action.
+  The action runs once per card.
+- After a dismissal the next card and the layers move up (`deck.settleDuration`).
+  With reduce motion on, nothing animates: it switches at once.
+
 ## Do not
 
 - No gradients, drop shadows beyond Paper elevation, or decorative icons.

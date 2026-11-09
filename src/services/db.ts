@@ -1,7 +1,7 @@
 import * as SQLite from 'expo-sqlite';
 
 const DB_NAME = 'spending.db';
-const SCHEMA_VERSION = 6;
+const SCHEMA_VERSION = 7;
 
 let dbPromise: Promise<SQLite.SQLiteDatabase> | null = null;
 
@@ -168,6 +168,11 @@ async function migrate(db: SQLite.SQLiteDatabase): Promise<void> {
       if (violations.length > 0) {
         throw new Error('Foreign key check failed after rebuilding transactions');
       }
+    }
+    if (current < 7) {
+      // Calendar days (YYYY-MM-DD); NULL on existing rows means none.
+      await db.execAsync('ALTER TABLE recurring_payments ADD COLUMN dismissed_at TEXT');
+      await db.execAsync('ALTER TABLE transactions ADD COLUMN recurring_occurrence TEXT');
     }
     await db.execAsync(`PRAGMA user_version = ${SCHEMA_VERSION}`);
   });

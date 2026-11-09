@@ -1,10 +1,11 @@
+import { removeTransactionUndoing } from '@/services/recurring-actions';
 import {
   createTransaction,
   listTransactions,
-  removeTransaction,
   updateTransaction,
 } from '@/services/transactions';
 import type { Transaction, TransactionInput } from '@/services/transactions';
+import { useRecurringStore } from '@/stores/recurring-store';
 import { useTransactionsStore } from '@/stores/transactions-store';
 
 jest.mock('@/services/transactions', () => ({
@@ -12,8 +13,14 @@ jest.mock('@/services/transactions', () => ({
   createTransaction: jest.fn(),
   listTransactions: jest.fn(),
   updateTransaction: jest.fn(),
-  removeTransaction: jest.fn(),
 }));
+
+jest.mock('@/services/recurring-actions', () => ({
+  ...jest.requireActual('@/services/recurring-actions'),
+  removeTransactionUndoing: jest.fn(),
+}));
+
+const removeTransaction = removeTransactionUndoing;
 
 const make = (id: number, date: string): Transaction => ({
   id,
@@ -23,6 +30,7 @@ const make = (id: number, date: string): Transaction => ({
   date,
   note: null,
   recurringId: null,
+  recurringOccurrence: null,
   createdAt: date,
 });
 
@@ -104,9 +112,62 @@ describe('transactions store', () => {
     expect(await useTransactionsStore.getState().remove(2)).toBe(false);
     expect(useTransactionsStore.getState().transactions).toHaveLength(2);
 
-    (removeTransaction as jest.Mock).mockResolvedValue(undefined);
+    (removeTransaction as jest.Mock).mockResolvedValue({ undone: null });
     expect(await useTransactionsStore.getState().remove(2)).toBe(true);
     expect(useTransactionsStore.getState().transactions.map((item) => item.id)).toEqual([1]);
+  });
+
+  it('steps the recurring payment back in memory when the delete undid a payment', async () => {
+    useTransactionsStore.setState({
+      transactions: [make(2, '2026-03-02T00:00:00.000Z')],
+      status: 'ready',
+    });
+    useRecurringStore.setState({
+      payments: [
+        {
+          id: 9,
+          accountId: 1,
+          name: 'Rent',
+          amountCents: 100,
+          note: null,
+          interval: 1,
+          unit: 'month',
+          startDate: '2026-01-15',
+          endDate: null,
+          notifyDaysBefore: '',
+          active: true,
+          lastConfirmedAt: '2026-03-15',
+          dismissedAt: null,
+          createdAt: '2026-01-01T00:00:00.000Z',
+        },
+      ],
+      status: 'ready',
+    });
+    (removeTransaction as jest.Mock).mockResolvedValue({
+      undone: { paymentId: 9, lastConfirmedAt: '2026-02-15' },
+    });
+    const onUndone = jest.fn((id: number, day: string | null) =>
+      useRecurringStore.getState().setLastConfirmed(id, day),
+    );
+    expect(await useTransactionsStore.getState().remove(2, onUndone)).toBe(true);
+    expect(onUndone).toHaveBeenCalledWith(9, '2026-02-15');
+    expect(useRecurringStore.getState().payments[0].lastConfirmedAt).toBe('2026-02-15');
+    // Nothing undone: the callback is not called.
+    onUndone.mockClear();
+    (removeTransaction as jest.Mock).mockResolvedValue({ undone: null });
+    useTransactionsStore.setState({ transactions: [make(3, '2026-03-03T00:00:00.000Z')] });
+    expect(await useTransactionsStore.getState().remove(3, onUndone)).toBe(true);
+    expect(onUndone).not.toHaveBeenCalled();
+  });
+
+  it('addExisting inserts a transaction the database already has, once, in order', () => {
+    useTransactionsStore.setState({
+      transactions: [make(1, '2026-03-01T00:00:00.000Z')],
+      status: 'ready',
+    });
+    useTransactionsStore.getState().addExisting(make(2, '2026-03-02T00:00:00.000Z'));
+    useTransactionsStore.getState().addExisting(make(2, '2026-03-02T00:00:00.000Z'));
+    expect(useTransactionsStore.getState().transactions.map((item) => item.id)).toEqual([2, 1]);
   });
 
   it('keeps a transaction added while a load is in flight', async () => {

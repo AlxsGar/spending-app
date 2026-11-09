@@ -1,10 +1,10 @@
 import { useEffect } from 'react';
 import { create } from 'zustand';
 
+import { removeTransactionUndoing } from '@/services/recurring-actions';
 import {
   createTransaction,
   listTransactions,
-  removeTransaction,
   sortTransactions,
   updateTransaction,
 } from '@/services/transactions';
@@ -21,7 +21,18 @@ type TransactionsState = {
   // Replaces the row and re-sorts. Resolves the saved transaction, or null
   // when saving failed.
   update: (id: number, input: TransactionInput) => Promise<Transaction | null>;
-  remove: (id: number) => Promise<boolean>;
+  // Deleting an expense that paid a recurring payment's last confirmed
+  // occurrence also steps that payment back in the database; onUndone is then
+  // called with the payment id and its new last_confirmed_at so the caller can
+  // update the recurring store. (The callback keeps this store from importing
+  // the recurring store, which imports this one.)
+  remove: (
+    id: number,
+    onUndone?: (paymentId: number, lastConfirmedAt: string | null) => void,
+  ) => Promise<boolean>;
+  // Adds a transaction the database already has (created by a recurring
+  // payment being paid).
+  addExisting: (transaction: Transaction) => void;
   // Drops an account's transactions from memory after the account was deleted.
   dropForAccount: (accountId: number) => void;
   // Clears the link to a deleted recurring payment (the database did the same).
@@ -70,17 +81,25 @@ export const useTransactionsStore = create<TransactionsState>((set, get) => ({
       return null;
     }
   },
-  remove: async (id) => {
+  remove: async (id, onUndone) => {
     try {
-      await removeTransaction(id);
+      const { undone } = await removeTransactionUndoing(id);
       set((state) => ({
         transactions: state.transactions.filter((item) => item.id !== id),
       }));
+      if (undone && onUndone) onUndone(undone.paymentId, undone.lastConfirmedAt);
       return true;
     } catch {
       return false;
     }
   },
+  addExisting: (transaction) =>
+    set((state) => ({
+      transactions: sortTransactions([
+        ...state.transactions.filter((item) => item.id !== transaction.id),
+        transaction,
+      ]),
+    })),
   dropForAccount: (accountId) =>
     set((state) => ({
       transactions: state.transactions.filter((item) => item.accountId !== accountId),

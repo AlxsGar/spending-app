@@ -18,6 +18,9 @@ export type Transaction = {
   date: string;
   note: string | null;
   recurringId: number | null;
+  // Calendar day (YYYY-MM-DD) of the occurrence this paid. Set together with
+  // recurringId; the database keeps it when recurringId is cleared.
+  recurringOccurrence: string | null;
   createdAt: string;
 };
 
@@ -63,10 +66,12 @@ type TransactionRow = {
   date: string;
   note: string | null;
   recurring_id: number | null;
+  recurring_occurrence: string | null;
   created_at: string;
 };
 
-const COLUMNS = 'id, account_id, kind, amount_cents, date, note, recurring_id, created_at';
+const COLUMNS =
+  'id, account_id, kind, amount_cents, date, note, recurring_id, recurring_occurrence, created_at';
 
 const AMOUNT_CODES: Record<AmountParseError, TransactionValidationCode> = {
   empty: 'amountRequired',
@@ -152,6 +157,7 @@ function toTransaction(row: TransactionRow): Transaction {
     date: row.date,
     note: row.note,
     recurringId: row.recurring_id,
+    recurringOccurrence: row.recurring_occurrence,
     createdAt: row.created_at,
   };
 }
@@ -229,8 +235,8 @@ export async function getTransaction(id: number): Promise<Transaction | null> {
   return row ? toTransaction(row) : null;
 }
 
-// Changes account, kind, amount, date and note. created_at and recurring_id
-// never change. Throws when the transaction does not exist.
+// Changes account, kind, amount, date and note. created_at, recurring_id and
+// recurring_occurrence never change. Throws when the transaction does not exist.
 export async function updateTransaction(
   id: number,
   input: TransactionInput,
@@ -304,6 +310,7 @@ export async function createTransaction(
     date,
     note,
     recurringId: null,
+    recurringOccurrence: null,
     createdAt,
   };
 }

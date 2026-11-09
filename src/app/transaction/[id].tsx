@@ -13,6 +13,7 @@ import {
 } from '@/components/ui';
 import { formatCentsForInput, formatSignedMoney } from '@/services/money';
 import { useAccounts } from '@/stores/accounts-store';
+import { useRecurringStore } from '@/stores/recurring-store';
 import { showSuccess } from '@/stores/success-store';
 import { useTransactions, useTransactionsStore } from '@/stores/transactions-store';
 
@@ -38,7 +39,9 @@ export default function EditTransactionScreen() {
     if (!transaction) return;
     setConfirming(false);
     setDeleting(true);
-    const ok = await remove(transaction.id);
+    const ok = await remove(transaction.id, (paymentId, day) =>
+      useRecurringStore.getState().setLastConfirmed(paymentId, day),
+    );
     if (ok) {
       router.back();
     } else {

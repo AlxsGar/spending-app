@@ -6,20 +6,26 @@ import { colors, disabledColor, sizes } from '@/theme';
 type Props = {
   label: string;
   onPress: () => void;
-  variant?: 'primary' | 'secondary' | 'destructive';
+  // link: a quiet text button for navigation ("See all").
+  variant?: 'primary' | 'secondary' | 'destructive' | 'link';
   disabled?: boolean;
 };
 
 export function AppButton({ label, onPress, variant = 'primary', disabled }: Props) {
+  const mode = variant === 'primary' ? 'contained' : variant === 'link' ? 'text' : 'outlined';
   return (
     <Button
-      mode={variant === 'primary' ? 'contained' : 'outlined'}
+      mode={mode}
       textColor={
         variant === 'destructive'
           ? disabled
             ? disabledColor(colors.alert)
             : colors.alert
-          : undefined
+          : variant === 'link'
+            ? disabled
+              ? disabledColor(colors.accentSecondary)
+              : colors.accentSecondary
+            : undefined
       }
       onPress={onPress}
       disabled={disabled}

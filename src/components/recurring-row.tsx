@@ -4,11 +4,13 @@ import { AmountText, ListRow } from '@/components/ui';
 import type { Account } from '@/services/accounts';
 import { formatShortDate } from '@/services/format-date';
 import { formatSignedMoney } from '@/services/money';
-import { dayToDate, scheduleState, toDay } from '@/services/recurring';
-import type { RecurringPayment } from '@/services/recurring';
+import { dayToDate, scheduleState } from '@/services/recurring';
+import type { Day, RecurringPayment } from '@/services/recurring';
 
 type Props = {
   payment: RecurringPayment;
+  // The local calendar day, from useToday, so the row follows midnight.
+  today: Day;
   // null: the payment has no account; it shows "Not set" and uses the default
   // currency.
   account: Account | null;
@@ -26,7 +28,7 @@ const EVERY_KEYS = {
 // Account name; then "Every 2 weeks · next Oct 28" (or Inactive / Finished in
 // place of the next date); then "Ends Dec 31" when there is an end date. The
 // amount sits on the right, in the account's currency.
-export function RecurringRow({ payment, account, defaultCurrency, onPress }: Props) {
+export function RecurringRow({ payment, today, account, defaultCurrency, onPress }: Props) {
   const { t, i18n } = useTranslation();
   const currency = account ? account.currency : defaultCurrency;
   const accountName = account ? account.name : t('recurring.noAccount');
@@ -36,7 +38,7 @@ export function RecurringRow({ payment, account, defaultCurrency, onPress }: Pro
   if (!payment.active) {
     status = t('recurring.inactive');
   } else {
-    const state = scheduleState(payment, toDay(new Date()));
+    const state = scheduleState(payment, today);
     status =
       state.kind === 'finished'
         ? t('recurring.finished')

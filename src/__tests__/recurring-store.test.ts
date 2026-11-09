@@ -1,10 +1,13 @@
 import {
   createRecurring,
+  dismissRecurring,
+  getRecurring,
   listRecurring,
   removeRecurring,
   updateRecurring,
 } from '@/services/recurring';
 import type { RecurringInput, RecurringPayment } from '@/services/recurring';
+import { AlreadyHandledError, payOccurrence } from '@/services/recurring-actions';
 import { useAccountsStore } from '@/stores/accounts-store';
 import { useRecurringStore } from '@/stores/recurring-store';
 import { useTransactionsStore } from '@/stores/transactions-store';
@@ -16,9 +19,15 @@ const consoleError = silenceConsoleError();
 jest.mock('@/services/recurring', () => ({
   ...jest.requireActual('@/services/recurring'),
   createRecurring: jest.fn(),
+  dismissRecurring: jest.fn(),
+  getRecurring: jest.fn(),
   listRecurring: jest.fn(),
   updateRecurring: jest.fn(),
   removeRecurring: jest.fn(),
+}));
+jest.mock('@/services/recurring-actions', () => ({
+  ...jest.requireActual('@/services/recurring-actions'),
+  payOccurrence: jest.fn(),
 }));
 jest.mock('@/services/accounts', () => ({
   ...jest.requireActual('@/services/accounts'),
@@ -38,6 +47,7 @@ const make = (id: number, accountId: number | null = 1): RecurringPayment => ({
   notifyDaysBefore: '',
   active: true,
   lastConfirmedAt: null,
+  dismissedAt: null,
   createdAt: '2026-01-01T00:00:00.000Z',
 });
 
@@ -169,6 +179,7 @@ describe('recurring store', () => {
       date: '2026-03-01T00:00:00.000Z',
       note: null,
       recurringId,
+      recurringOccurrence: null,
       createdAt: '2026-03-01T00:00:00.000Z',
     });
     useTransactionsStore.setState({
@@ -221,5 +232,107 @@ describe('recurring store', () => {
     });
     expect(await useAccountsStore.getState().remove(1)).toBe(true);
     expect(useRecurringStore.getState().payments.map((item) => item.id)).toEqual([2, 4]);
+  });
+
+  describe('dismiss', () => {
+    it('stores the dismissed occurrence in memory and the database, leaving the confirmation alone', async () => {
+      useRecurringStore.setState({
+        payments: [{ ...make(1), lastConfirmedAt: '2026-09-15' }, make(2)],
+        status: 'ready',
+      });
+      (dismissRecurring as jest.Mock).mockResolvedValue(undefined);
+      expect(await useRecurringStore.getState().dismiss(1, '2026-10-15')).toBe(true);
+      expect(dismissRecurring).toHaveBeenCalledWith(1, '2026-10-15');
+      const [first, second] = useRecurringStore.getState().payments;
+      expect(first).toMatchObject({ dismissedAt: '2026-10-15', lastConfirmedAt: '2026-09-15' });
+      expect(second.dismissedAt).toBeNull();
+    });
+
+    it('keeps the state and logs when the write fails', async () => {
+      useRecurringStore.setState({ payments: [make(1)], status: 'ready' });
+      (dismissRecurring as jest.Mock).mockRejectedValue(new Error('db'));
+      expect(await useRecurringStore.getState().dismiss(1, '2026-10-15')).toBe(false);
+      expect(useRecurringStore.getState().payments[0].dismissedAt).toBeNull();
+      expect(consoleError()).toHaveBeenCalledWith('[recurring] dismiss failed:', expect.any(Error));
+    });
+  });
+
+  describe('pay', () => {
+    const paid = (occurrence: string) => ({
+      transaction: {
+        id: 90,
+        accountId: 3,
+        kind: 'expense' as const,
+        amountCents: 100,
+        date: '2026-10-15T12:00:00.000Z',
+        note: null,
+        recurringId: 1,
+        recurringOccurrence: occurrence,
+        createdAt: '2026-10-15T12:00:00.000Z',
+      },
+      payment: { ...make(1), lastConfirmedAt: occurrence },
+    });
+
+    it('adds the expense to the transactions store and confirms the occurrence in memory', async () => {
+      useRecurringStore.setState({ payments: [make(1), make(2)], status: 'ready' });
+      (payOccurrence as jest.Mock).mockResolvedValue(paid('2026-10-15'));
+      expect(await useRecurringStore.getState().pay(1, '2026-10-15', 3)).toBe('paid');
+      expect(payOccurrence).toHaveBeenCalledWith({
+        paymentId: 1,
+        occurrence: '2026-10-15',
+        accountId: 3,
+      });
+      expect(useTransactionsStore.getState().transactions).toEqual([paid('2026-10-15').transaction]);
+      const [first, second] = useRecurringStore.getState().payments;
+      expect(first.lastConfirmedAt).toBe('2026-10-15');
+      expect(second.lastConfirmedAt).toBeNull();
+    });
+
+    it('two overlapping pay calls add one expense and one confirmation; the duplicate is not an error', async () => {
+      useRecurringStore.setState({ payments: [make(1)], status: 'ready' });
+      (payOccurrence as jest.Mock)
+        .mockResolvedValueOnce(paid('2026-10-15'))
+        .mockRejectedValueOnce(new AlreadyHandledError(1, '2026-10-15'));
+      const [first, second] = await Promise.all([
+        useRecurringStore.getState().pay(1, '2026-10-15', 3),
+        useRecurringStore.getState().pay(1, '2026-10-15', 3),
+      ]);
+      expect([first, second]).toEqual(['paid', 'already']);
+      expect(useTransactionsStore.getState().transactions).toHaveLength(1);
+      expect(useRecurringStore.getState().payments[0].lastConfirmedAt).toBe('2026-10-15');
+      expect(consoleError()).not.toHaveBeenCalled();
+    });
+
+    it('an already-paid occurrence resolves "already", adds nothing and refreshes the payment from the database', async () => {
+      // A stale card: memory thinks it is unpaid, the database says it is paid.
+      useRecurringStore.setState({ payments: [make(1)], status: 'ready' });
+      (payOccurrence as jest.Mock).mockRejectedValue(new AlreadyHandledError(1, '2026-10-15'));
+      (getRecurring as jest.Mock).mockResolvedValue({ ...make(1), lastConfirmedAt: '2026-10-15' });
+      expect(await useRecurringStore.getState().pay(1, '2026-10-15', 3)).toBe('already');
+      expect(useTransactionsStore.getState().transactions).toEqual([]);
+      expect(useRecurringStore.getState().payments[0].lastConfirmedAt).toBe('2026-10-15');
+      expect(consoleError()).not.toHaveBeenCalled();
+    });
+
+    it('changes nothing and logs when the write fails', async () => {
+      useRecurringStore.setState({ payments: [make(1)], status: 'ready' });
+      (payOccurrence as jest.Mock).mockRejectedValue(new Error('db'));
+      expect(await useRecurringStore.getState().pay(1, '2026-10-15', 3)).toBe('failed');
+      expect(useTransactionsStore.getState().transactions).toEqual([]);
+      expect(useRecurringStore.getState().payments[0].lastConfirmedAt).toBeNull();
+      expect(consoleError()).toHaveBeenCalledWith('[recurring] pay failed:', expect.any(Error));
+    });
+  });
+
+  it('setLastConfirmed sets or clears the confirmation of one payment', () => {
+    useRecurringStore.setState({
+      payments: [{ ...make(1), lastConfirmedAt: '2026-10-15' }, make(2)],
+      status: 'ready',
+    });
+    useRecurringStore.getState().setLastConfirmed(1, '2026-09-15');
+    expect(useRecurringStore.getState().payments[0].lastConfirmedAt).toBe('2026-09-15');
+    useRecurringStore.getState().setLastConfirmed(1, null);
+    expect(useRecurringStore.getState().payments[0].lastConfirmedAt).toBeNull();
+    expect(useRecurringStore.getState().payments[1].lastConfirmedAt).toBeNull();
   });
 });

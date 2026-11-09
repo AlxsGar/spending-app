@@ -3,15 +3,20 @@ import { create } from 'zustand';
 
 import {
   createRecurring,
+  dismissRecurring,
+  getRecurring,
   listRecurring,
   removeRecurring,
   updateRecurring,
 } from '@/services/recurring';
-import type { RecurringInput, RecurringPayment } from '@/services/recurring';
+import type { Day, RecurringInput, RecurringPayment } from '@/services/recurring';
+import { AlreadyHandledError, payOccurrence } from '@/services/recurring-actions';
 
 import { useTransactionsStore } from './transactions-store';
 
 type Status = 'idle' | 'loading' | 'ready' | 'error';
+
+export type PayOutcome = 'paid' | 'already' | 'failed';
 
 type RecurringState = {
   payments: RecurringPayment[];
@@ -21,6 +26,17 @@ type RecurringState = {
   add: (input: RecurringInput) => Promise<RecurringPayment | null>;
   update: (id: number, input: RecurringInput) => Promise<RecurringPayment | null>;
   remove: (id: number) => Promise<boolean>;
+  // Hides one occurrence's card. Resolves true when saved.
+  dismiss: (id: number, occurrence: Day) => Promise<boolean>;
+  // Quick Paid: records the expense and confirms the occurrence (one database
+  // transaction), then updates this store and the transactions store.
+  // - paid: saved.
+  // - already: the occurrence had already been paid (a stale card, or another
+  //   call won); nothing was written, the payment was refreshed.
+  // - failed: could not be saved.
+  pay: (id: number, occurrence: Day, accountId: number) => Promise<PayOutcome>;
+  // Sets last_confirmed_at in memory (after the database changed it).
+  setLastConfirmed: (id: number, day: Day | null) => void;
   // Drops an account's payments from memory after the account was deleted.
   dropForAccount: (accountId: number) => void;
 };
@@ -81,6 +97,63 @@ export const useRecurringStore = create<RecurringState>((set, get) => ({
       return false;
     }
   },
+  dismiss: async (id, occurrence) => {
+    try {
+      await dismissRecurring(id, occurrence);
+      set((state) => ({
+        payments: state.payments.map((item) =>
+          item.id === id ? { ...item, dismissedAt: occurrence } : item,
+        ),
+      }));
+      return true;
+    } catch (error) {
+      // Diagnostic, like the list failure above.
+      console.error('[recurring] dismiss failed:', error);
+      return false;
+    }
+  },
+  pay: async (id, occurrence, accountId) => {
+    try {
+      const { transaction, payment } = await payOccurrence({
+        paymentId: id,
+        occurrence,
+        accountId,
+      });
+      useTransactionsStore.getState().addExisting(transaction);
+      set((state) => ({
+        payments: state.payments.map((item) =>
+          item.id === id ? { ...item, lastConfirmedAt: payment.lastConfirmedAt } : item,
+        ),
+      }));
+      return 'paid';
+    } catch (error) {
+      // Already paid (an overlapping call, or a stale card): nothing was written.
+      // Not a failure, not logged. Bring this payment up to date from the
+      // database, so a stale card goes away.
+      if (error instanceof AlreadyHandledError) {
+        try {
+          const fresh = await getRecurring(id);
+          if (fresh) {
+            set((state) => ({
+              payments: state.payments.map((item) => (item.id === id ? fresh : item)),
+            }));
+          }
+        } catch {
+          // Only a refresh; the next load fixes it.
+        }
+        return 'already';
+      }
+      // Diagnostic, like the list failure above.
+      console.error('[recurring] pay failed:', error);
+      return 'failed';
+    }
+  },
+  setLastConfirmed: (id, day) =>
+    set((state) => ({
+      payments: state.payments.map((item) =>
+        item.id === id ? { ...item, lastConfirmedAt: day } : item,
+      ),
+    })),
   dropForAccount: (accountId) =>
     set((state) => ({
       payments: state.payments.filter((item) => item.accountId !== accountId),

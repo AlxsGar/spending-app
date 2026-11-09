@@ -17,6 +17,7 @@ const make = (id: number, date: string): Transaction => ({
   date,
   note: null,
   recurringId: null,
+  recurringOccurrence: null,
   createdAt: date,
 });
 

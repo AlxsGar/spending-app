@@ -34,6 +34,9 @@ export type RecurringPayment = {
   active: boolean;
   // The last occurrence paid or skipped; null when never.
   lastConfirmedAt: Day | null;
+  // The occurrence whose card was dismissed; null when none. It only hides that
+  // occurrence's card; the next occurrence shows again.
+  dismissedAt: Day | null;
   // ISO UTC.
   createdAt: string;
 };
@@ -95,11 +98,12 @@ type RecurringRow = {
   notify_days_before: string;
   active: number;
   last_confirmed_at: string | null;
+  dismissed_at: string | null;
   created_at: string;
 };
 
 const COLUMNS =
-  'id, account_id, name, amount_cents, note, interval, unit, start_date, end_date, notify_days_before, active, last_confirmed_at, created_at';
+  'id, account_id, name, amount_cents, note, interval, unit, start_date, end_date, notify_days_before, active, last_confirmed_at, dismissed_at, created_at';
 
 const AMOUNT_CODES: Record<AmountParseError, RecurringValidationCode> = {
   empty: 'amountRequired',
@@ -292,6 +296,67 @@ export function sortRecurring(
   });
 }
 
+// ---- Card stack ----------------------------------------------------------
+
+// A card shows occurrences from today through today + this many days, both
+// ends included (8 calendar days). Overdue ones are before today and always
+// shown.
+export const STACK_WINDOW_DAYS = 7;
+
+// The calendar day `count` days after `value` (negative: before). Whole days,
+// so a month or year boundary or a DST change cannot shift it.
+export function addDays(value: Day, count: number): Day {
+  return fromDayNumber(dayNumber(value) + count);
+}
+
+export type StackCard = {
+  payment: RecurringPayment;
+  // The occurrence the card is for (the one Dismiss and Paid act on).
+  occurrence: Day;
+  // Before today and unpaid.
+  overdue: boolean;
+};
+
+// The card a payment would show today, or null: inactive and finished payments
+// have none, nor do ones whose occurrence is after today + 7 days or was
+// dismissed. Only the current occurrence can be overdue (earlier missed ones are
+// dropped, see scheduleState).
+export function cardFor(payment: RecurringPayment, today: Day): StackCard | null {
+  if (!payment.active) return null;
+  const state = scheduleState(payment, today);
+  if (state.kind === 'finished') return null;
+  let occurrence: Day | null = state.date;
+  // A dismissed occurrence hides only itself: the next one is judged like any
+  // other (it shows once it is within the window, and is never overdue).
+  if (payment.dismissedAt === occurrence) {
+    occurrence = occurrenceAt(payment, latestIndexOnOrBefore(payment, occurrence) + 1);
+  }
+  if (occurrence === null || occurrence > addDays(today, STACK_WINDOW_DAYS)) return null;
+  return { payment, occurrence, overdue: occurrence < today };
+}
+
+// The cards in stack order: overdue first, then the rest, each by occurrence
+// day and then id.
+export function stackCards(payments: RecurringPayment[], today: Day): StackCard[] {
+  const cards: StackCard[] = [];
+  for (const payment of payments) {
+    const card = cardFor(payment, today);
+    if (card) cards.push(card);
+  }
+  return cards.sort((a, b) => {
+    if (a.overdue !== b.overdue) return a.overdue ? -1 : 1;
+    if (a.occurrence !== b.occurrence) return a.occurrence < b.occurrence ? -1 : 1;
+    return a.payment.id - b.payment.id;
+  });
+}
+
+// The latest occurrence strictly before `occurrence`, or null when it is the
+// first one (or earlier). Used to undo a payment.
+export function previousOccurrence(schedule: Schedule, occurrence: Day): Day | null {
+  const k = latestIndexOnOrBefore(schedule, addDays(occurrence, -1));
+  return k < 0 ? null : rawOccurrence(schedule, k);
+}
+
 // ---- Validation ----------------------------------------------------------
 
 export function isUnit(value: string): value is Unit {
@@ -358,6 +423,7 @@ function toRecurring(row: RecurringRow): RecurringPayment {
     notifyDaysBefore: row.notify_days_before,
     active: row.active === 1,
     lastConfirmedAt: row.last_confirmed_at,
+    dismissedAt: row.dismissed_at,
     createdAt: row.created_at,
   };
 }
@@ -430,6 +496,7 @@ export async function createRecurring(
     ...parsed,
     notifyDaysBefore: '',
     lastConfirmedAt: null,
+    dismissedAt: null,
     createdAt,
   };
 }
@@ -464,6 +531,18 @@ export async function updateRecurring(
   );
   if (result.changes === 0) throw new Error(`Recurring payment ${id} not found`);
   return { ...existing, ...parsed };
+}
+
+// Hides the card of one occurrence. Does not touch last_confirmed_at. Throws
+// when the payment does not exist.
+export async function dismissRecurring(id: number, occurrence: Day): Promise<void> {
+  const db = await initDb();
+  const result = await db.runAsync(
+    'UPDATE recurring_payments SET dismissed_at = ? WHERE id = ?',
+    occurrence,
+    id,
+  );
+  if (result.changes === 0) throw new Error(`Recurring payment ${id} not found`);
 }
 
 // Linked transactions stay: their recurring_id becomes NULL (foreign key).

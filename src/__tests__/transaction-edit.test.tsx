@@ -3,12 +3,10 @@ import { fireEvent, screen, waitFor } from '@testing-library/react-native';
 import EditTransactionScreen from '@/app/transaction/[id]';
 import { en } from '@/i18n/en';
 import { listAccounts } from '@/services/accounts';
-import {
-  listTransactions,
-  removeTransaction,
-  updateTransaction,
-} from '@/services/transactions';
+import { removeTransactionUndoing } from '@/services/recurring-actions';
+import { listTransactions, updateTransaction } from '@/services/transactions';
 import { useAccountsStore } from '@/stores/accounts-store';
+import { useRecurringStore } from '@/stores/recurring-store';
 import { useSuccessStore } from '@/stores/success-store';
 import { useTransactionsStore } from '@/stores/transactions-store';
 import { fakeAnimationTimers, renderWithProviders } from '@/test/render';
@@ -33,8 +31,14 @@ jest.mock('@/services/transactions', () => ({
   ...jest.requireActual('@/services/transactions'),
   listTransactions: jest.fn(),
   updateTransaction: jest.fn(),
-  removeTransaction: jest.fn(),
 }));
+
+jest.mock('@/services/recurring-actions', () => ({
+  ...jest.requireActual('@/services/recurring-actions'),
+  removeTransactionUndoing: jest.fn(),
+}));
+
+const removeTransaction = removeTransactionUndoing;
 
 jest.mock('@react-native-community/datetimepicker', () => ({
   __esModule: true,
@@ -158,7 +162,7 @@ describe('edit transaction screen', () => {
   });
 
   it('Confirm deletes, goes back and shows no success card', async () => {
-    (removeTransaction as jest.Mock).mockResolvedValue(undefined);
+    (removeTransaction as jest.Mock).mockResolvedValue({ undone: null });
     await renderWithProviders(<EditTransactionScreen />);
     await screen.findByLabelText(en.transactions.amountLabel);
     fireEvent.press(screen.getByText(en.transactions.delete));
@@ -170,6 +174,76 @@ describe('edit transaction screen', () => {
     await waitFor(() => expect(mockBack).toHaveBeenCalledTimes(1));
     expect(useTransactionsStore.getState().transactions).toHaveLength(0);
     expect(useSuccessStore.getState().current).toBeNull();
+  });
+
+  it('deleting the expense that paid the last confirmed occurrence steps the payment back in the store', async () => {
+    useRecurringStore.setState({
+      payments: [
+        {
+          id: 9,
+          accountId: 1,
+          name: 'Rent',
+          amountCents: 100,
+          note: null,
+          interval: 1,
+          unit: 'month',
+          startDate: '2026-01-15',
+          endDate: null,
+          notifyDaysBefore: '',
+          active: true,
+          lastConfirmedAt: '2026-03-15',
+          dismissedAt: null,
+          createdAt: '2026-01-01T00:00:00.000Z',
+        },
+      ],
+      status: 'ready',
+    });
+    (removeTransaction as jest.Mock).mockResolvedValue({
+      undone: { paymentId: 9, lastConfirmedAt: '2026-02-15' },
+    });
+    await renderWithProviders(<EditTransactionScreen />);
+    await screen.findByLabelText(en.transactions.amountLabel);
+    fireEvent.press(screen.getByText(en.transactions.delete));
+    await screen.findByText(en.transactions.deleteTitle);
+    const deletes = screen.getAllByText(en.transactions.delete);
+    fireEvent.press(deletes[deletes.length - 1]);
+
+    await waitFor(() => expect(mockBack).toHaveBeenCalledTimes(1));
+    expect(useRecurringStore.getState().payments[0].lastConfirmedAt).toBe('2026-02-15');
+  });
+
+  it('a delete that undoes nothing leaves the payments alone', async () => {
+    useRecurringStore.setState({
+      payments: [
+        {
+          id: 9,
+          accountId: 1,
+          name: 'Rent',
+          amountCents: 100,
+          note: null,
+          interval: 1,
+          unit: 'month',
+          startDate: '2026-01-15',
+          endDate: null,
+          notifyDaysBefore: '',
+          active: true,
+          lastConfirmedAt: '2026-03-15',
+          dismissedAt: null,
+          createdAt: '2026-01-01T00:00:00.000Z',
+        },
+      ],
+      status: 'ready',
+    });
+    (removeTransaction as jest.Mock).mockResolvedValue({ undone: null });
+    await renderWithProviders(<EditTransactionScreen />);
+    await screen.findByLabelText(en.transactions.amountLabel);
+    fireEvent.press(screen.getByText(en.transactions.delete));
+    await screen.findByText(en.transactions.deleteTitle);
+    const deletes = screen.getAllByText(en.transactions.delete);
+    fireEvent.press(deletes[deletes.length - 1]);
+
+    await waitFor(() => expect(mockBack).toHaveBeenCalledTimes(1));
+    expect(useRecurringStore.getState().payments[0].lastConfirmedAt).toBe('2026-03-15');
   });
 
   it('shows an inline error and stays when the delete fails', async () => {

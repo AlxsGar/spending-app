@@ -242,6 +242,7 @@ const make = (
   date,
   note: null,
   recurringId: null,
+  recurringOccurrence: null,
   createdAt: date,
 });
 

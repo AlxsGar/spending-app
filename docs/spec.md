@@ -56,6 +56,8 @@ v1 is dark theme only.
 - `note` - optional
 - `recurring_id` - set when the transaction was created by confirming a
   recurring payment
+- `recurring_occurrence` - calendar day (`YYYY-MM-DD`) of the occurrence the
+  transaction paid; set together with `recurring_id`
 - `created_at`
 
 No categories in v1.
@@ -89,6 +91,12 @@ No categories in v1.
 - `active` - boolean
 - `last_confirmed_at` - calendar day (`YYYY-MM-DD`) of the last occurrence
   that was paid or skipped; empty if never.
+- `dismissed_at` - calendar day (`YYYY-MM-DD`) of the occurrence whose card
+  was dismissed; empty if none. Hides that occurrence's card on Home and
+  Movements only; reminders are unaffected. Dismissing hides only that
+  occurrence: the next one appears when it enters the 7-day window like any
+  other, even while the dismissed one is still the unpaid current
+  occurrence.
 
 Schedule dates are calendar days, not timestamps (exception to the ISO UTC
 rule); `created_at` stays ISO UTC.
@@ -128,9 +136,54 @@ payment has no account, choosing one is required. If it has one, that
 account is the default and can be changed for that occurrence. The chosen
 account goes on the created expense; the payment's own account does not
 change. Paying from an account in another currency relabels the amount, as
-with any currency change; nothing is converted. *Skip* marks the current occurrence as handled without creating a
-transaction. Deleting the linked expense reverts the occurrence to unpaid
-if it was the latest confirmation.
+with any currency change; nothing is converted and no warning is shown;
+the amount shows in the paying account's currency. *Skip* marks the
+current occurrence as handled without creating a transaction. Pay now and
+Skip live on the Recurring payments screen.
+
+Quick *Paid* (from a card, or "Yes" on the paid-today prompt) uses the
+stored amount, today's date and the payment's account; it asks for an
+account only when the payment's account is "Not set". It records the
+occurrence in `recurring_occurrence` and sets `last_confirmed_at` to it. A
+success card follows ("Payment recorded", with the name).
+
+"Has this been paid today?" (*Yes* / *No, later*) appears after creating a
+recurring payment whose start date is today. Only on create, never on edit.
+
+Undo: deleting a linked expense whose `recurring_occurrence` equals
+`last_confirmed_at` sets `last_confirmed_at` back to the occurrence before
+it (empty if it was the first). Otherwise nothing changes.
+
+### Recurring card stack
+
+One component, shown on Home (replacing the "upcoming" card) and at the top
+of Movements:
+
+- Cards: overdue occurrences first, marked as overdue, then occurrences due
+  in the next 7 days from today, soonest first; dismissed occurrences
+  excluded.
+- Drawn as a deck seen from the front: only the top card is readable. Its
+  secondary line on top reads "account · due date" ("BBVA · Due Nov 1", or
+  "Overdue · Nov 1" in the alert color with an icon; "Not set" when there
+  is no account), the payment name is the main line, and the amount is on
+  the right. Behind it, up to two textless layers peek out below its bottom
+  edge (each about 6 px lower, about 96% and 92% of the width, filled with
+  the text color at 12% and 7% over the background, the same overlay rule
+  as dividers). One card, or the summary card, has no layers. A badge with
+  the card count sits inside the top card's top-right corner, only when
+  there are two or more cards; the secondary line ellipsizes before it. On
+  overdue cards the account name shrinks first so "Overdue · date" always
+  shows. Swiping brings the next card up
+  to the front and the layers shift up with it.
+- Swipe the top card right to dismiss it. Tap it to open a modal with
+  *Dismiss* and *Paid*. A dismissal or payment applies in both places.
+- "See all" opens the Recurring payments screen (full list; tap a row to
+  edit).
+- With nothing due, the stack shows one summary card ("N recurring
+  payments") that opens the Recurring payments screen. With no recurring
+  payments at all, it is hidden.
+- Paid cancels that occurrence's reminders (once reminders exist); Dismiss
+  does not.
 
 ### Soft cap
 
@@ -158,9 +211,8 @@ payment*, *Add account*. Settings has no FAB.
 
 - A row of account cards (name, icon, balance, currency). `[Q6]` which
   accounts when there are many; default: horizontal scroll, all accounts.
-- An "upcoming" card with a bell icon whenever a recurring payment is due
-  within the next 7 days. It lists those payments. It is a card only; it
-  never sends a notification.
+- The recurring card stack (see "Recurring card stack"), replacing the
+  former "upcoming" card. It never sends a notification.
 - Latest 3 transactions across all accounts: the three most recently
   recorded (by `created_at`), not by transaction date. Each row shows the
   transaction's date as secondary text under the amount, so a backdated
@@ -180,8 +232,11 @@ payment*, *Add account*. Settings has no FAB.
 ### Movements
 
 - All transactions from every account, newest first, grouped by day.
-- A section for all recurring payments: edit, remove, and *Pay now* (confirm
-  early). Due and overdue ones are visually distinct.
+- The recurring card stack at the top (see "Recurring card stack"); the
+  transactions list below is unchanged.
+- The Recurring payments screen (opened from the stack) lists all recurring
+  payments: edit, remove, *Pay now* (confirm early) and *Skip*. Due and
+  overdue ones are visually distinct.
 
 ### Settings
 
@@ -197,8 +252,9 @@ user chooses which of 3 / 2 / 1 days before and morning-of fire; all, some,
 or none. Tapping a notification opens the payment in Movements with *Pay
 now* visible.
 
-The 7-day "upcoming" card on Home is separate from notifications and always
-appears when something is due within a week.
+The recurring card stack is separate from notifications. Dismissing a card
+never changes reminders; paying an occurrence cancels its remaining
+reminders.
 
 ## Month projection
 

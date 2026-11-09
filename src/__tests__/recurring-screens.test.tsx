@@ -19,6 +19,7 @@ import {
   updateRecurring,
 } from '@/services/recurring';
 import type { RecurringPayment } from '@/services/recurring';
+import { payOccurrence } from '@/services/recurring-actions';
 import { useAccountsStore } from '@/stores/accounts-store';
 import { useRecurringStore } from '@/stores/recurring-store';
 import { useSuccessStore } from '@/stores/success-store';
@@ -50,6 +51,11 @@ jest.mock('@/services/recurring', () => ({
   listRecurring: jest.fn(),
   updateRecurring: jest.fn(),
   removeRecurring: jest.fn(),
+}));
+
+jest.mock('@/services/recurring-actions', () => ({
+  ...jest.requireActual('@/services/recurring-actions'),
+  payOccurrence: jest.fn(),
 }));
 
 jest.mock('@react-native-community/datetimepicker', () => ({
@@ -88,6 +94,7 @@ const stored: RecurringPayment = {
   notifyDaysBefore: '',
   active: true,
   lastConfirmedAt: null,
+  dismissedAt: null,
   createdAt: '2026-01-01T00:00:00.000Z',
 };
 
@@ -126,6 +133,22 @@ beforeEach(() => {
     name: input.name.trim(),
   }));
   (removeRecurring as jest.Mock).mockResolvedValue(undefined);
+  (payOccurrence as jest.Mock).mockImplementation(
+    async ({ paymentId, occurrence, accountId }: { paymentId: number; occurrence: string; accountId: number }) => ({
+      transaction: {
+        id: 700,
+        accountId,
+        kind: 'expense' as const,
+        amountCents: 100,
+        date: new Date().toISOString(),
+        note: null,
+        recurringId: paymentId,
+        recurringOccurrence: occurrence,
+        createdAt: new Date().toISOString(),
+      },
+      payment: { ...stored, id: paymentId, lastConfirmedAt: occurrence },
+    }),
+  );
   useAccountsStore.setState({ accounts: [], status: 'idle', saveError: false });
   useRecurringStore.setState({ payments: [], status: 'idle' });
   useSuccessStore.setState({ current: null });
@@ -483,6 +506,138 @@ describe('new recurring payment screen', () => {
     expect(await screen.findByText(en.common.loadError)).toBeTruthy();
     fireEvent.press(screen.getByText(en.common.retry));
     expect(await screen.findByLabelText(en.recurring.nameLabel)).toBeTruthy();
+  });
+});
+
+describe('paid-today prompt after creating a payment', () => {
+  const startsToday = (extra: Partial<RecurringPayment> = {}) => ({
+    ...stored,
+    id: 6,
+    name: 'Gym',
+    startDate: today(),
+    ...extra,
+  });
+
+  const fillAndSave = async () => {
+    await renderWithProviders(<NewRecurringScreen />);
+    fireEvent.changeText(await screen.findByLabelText(en.recurring.nameLabel), 'Gym');
+    fireEvent.changeText(screen.getByLabelText(en.recurring.amountLabel), '10');
+    fireEvent.press(screen.getByText(en.recurring.save));
+  };
+
+  it('asks "Has this been paid today?" instead of the created card, and does not leave yet', async () => {
+    (createRecurring as jest.Mock).mockResolvedValue(startsToday());
+    await fillAndSave();
+    expect(await screen.findByText(en.recurring.pay.todayTitle)).toBeTruthy();
+    expect(screen.getByRole('button', { name: en.recurring.pay.todayYes })).toBeTruthy();
+    expect(screen.getByRole('button', { name: en.recurring.pay.todayLater })).toBeTruthy();
+    expect(mockBack).not.toHaveBeenCalled();
+    expect(useSuccessStore.getState().current).toBeNull();
+    expect(payOccurrence).not.toHaveBeenCalled();
+  });
+
+  it('"No, later" only creates: the created card shows and nothing is paid', async () => {
+    (createRecurring as jest.Mock).mockResolvedValue(startsToday());
+    await fillAndSave();
+    fireEvent.press(await screen.findByRole('button', { name: en.recurring.pay.todayLater }));
+    await waitFor(() => expect(mockBack).toHaveBeenCalledTimes(1));
+    expect(useSuccessStore.getState().current).toMatchObject({
+      message: en.recurring.created,
+      detail: 'Gym',
+    });
+    expect(payOccurrence).not.toHaveBeenCalled();
+    expect(useRecurringStore.getState().payments[0].lastConfirmedAt).toBeNull();
+  });
+
+  it('"Yes" pays today\'s occurrence from the payment\'s account and shows the payment card', async () => {
+    (createRecurring as jest.Mock).mockResolvedValue(startsToday({ accountId: 1 }));
+    await fillAndSave();
+    fireEvent.press(await screen.findByRole('button', { name: en.recurring.pay.todayYes }));
+    await waitFor(() =>
+      expect(payOccurrence).toHaveBeenCalledWith({
+        paymentId: 6,
+        occurrence: today(),
+        accountId: 1,
+      }),
+    );
+    await waitFor(() => expect(mockBack).toHaveBeenCalledTimes(1));
+    expect(useSuccessStore.getState().current).toMatchObject({
+      message: en.recurring.pay.recorded,
+      detail: 'Gym',
+    });
+    expect(useRecurringStore.getState().payments[0].lastConfirmedAt).toBe(today());
+  });
+
+  it('"Yes" on a payment with no account asks which account to pay from', async () => {
+    (createRecurring as jest.Mock).mockResolvedValue(startsToday({ accountId: null }));
+    await fillAndSave();
+    fireEvent.press(await screen.findByRole('button', { name: en.recurring.pay.todayYes }));
+    expect(await screen.findByText(en.recurring.pay.accountTitle)).toBeTruthy();
+    expect(payOccurrence).not.toHaveBeenCalled();
+    fireEvent.press(screen.getByText('Yen wallet'));
+    await waitFor(() =>
+      expect(payOccurrence).toHaveBeenCalledWith({
+        paymentId: 6,
+        occurrence: today(),
+        accountId: 2,
+      }),
+    );
+    await waitFor(() => expect(mockBack).toHaveBeenCalledTimes(1));
+  });
+
+  it('cancelling the account choice leaves the payment created and unpaid', async () => {
+    (createRecurring as jest.Mock).mockResolvedValue(startsToday({ accountId: null }));
+    await fillAndSave();
+    fireEvent.press(await screen.findByRole('button', { name: en.recurring.pay.todayYes }));
+    await screen.findByText(en.recurring.pay.accountTitle);
+    fireEvent.press(screen.getByText(en.common.cancel));
+    await waitFor(() => expect(mockBack).toHaveBeenCalledTimes(1));
+    expect(useSuccessStore.getState().current).toMatchObject({ message: en.recurring.created });
+    expect(payOccurrence).not.toHaveBeenCalled();
+  });
+
+  it('is in Spanish', async () => {
+    await i18n.changeLanguage('es');
+    try {
+      (createRecurring as jest.Mock).mockResolvedValue(startsToday());
+      await renderWithProviders(<NewRecurringScreen />);
+      fireEvent.changeText(await screen.findByLabelText(es.recurring.nameLabel), 'Gym');
+      fireEvent.changeText(screen.getByLabelText(es.recurring.amountLabel), '10');
+      fireEvent.press(screen.getByText(es.recurring.save));
+      expect(await screen.findByText('¿Ya se pagó hoy?')).toBeTruthy();
+      expect(screen.getByRole('button', { name: 'Sí' })).toBeTruthy();
+      expect(screen.getByRole('button', { name: 'No, después' })).toBeTruthy();
+    } finally {
+      await act(async () => {
+        await i18n.changeLanguage('en');
+      });
+    }
+  });
+
+  it('is not asked for a payment that starts on another day', async () => {
+    (createRecurring as jest.Mock).mockResolvedValue(startsToday({ startDate: inDays(1) }));
+    await fillAndSave();
+    await waitFor(() => expect(mockBack).toHaveBeenCalledTimes(1));
+    expect(screen.queryByText(en.recurring.pay.todayTitle)).toBeNull();
+    expect(useSuccessStore.getState().current).toMatchObject({ message: en.recurring.created });
+  });
+
+  it('is not asked for an inactive payment', async () => {
+    (createRecurring as jest.Mock).mockResolvedValue(startsToday({ active: false }));
+    await fillAndSave();
+    await waitFor(() => expect(mockBack).toHaveBeenCalledTimes(1));
+    expect(screen.queryByText(en.recurring.pay.todayTitle)).toBeNull();
+  });
+
+  it('is never asked when editing, even if the start date is today', async () => {
+    mockParams = { id: '5' };
+    (updateRecurring as jest.Mock).mockResolvedValue({ ...stored, startDate: today() });
+    await renderWithProviders(<EditRecurringScreen />);
+    fireEvent.changeText(await screen.findByLabelText(en.recurring.nameLabel), 'Rent 2');
+    fireEvent.press(screen.getByText(en.recurring.save));
+    await waitFor(() => expect(mockBack).toHaveBeenCalledTimes(1));
+    expect(screen.queryByText(en.recurring.pay.todayTitle)).toBeNull();
+    expect(useSuccessStore.getState().current).toMatchObject({ message: en.recurring.updated });
   });
 });
 
