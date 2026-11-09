@@ -45,8 +45,11 @@ delegated.
 7. **Report to the user.** What changed, files touched, check results, the
    reviewer's verdict, and exactly what to try on the device. Then wait.
 8. **Close.** When the user approves, tell `mobile-dev` to commit on the
-   slice branch, and set the slice to `done` in `docs/slices.md`. The user
-   merges and pushes.
+   slice branch, and set the slice to `done` in `docs/slices.md`. After the
+   commit, add its hash to the slice's row in `docs/slices.md`, then tell
+   `mobile-dev` to make a second commit "docs: record <slice> hash" on the
+   same branch and confirm `git status` is clean. The branch must be clean
+   before the user merges. The user merges and pushes.
 
 ## Brief format
 
