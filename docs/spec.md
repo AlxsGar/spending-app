@@ -256,8 +256,13 @@ payment*, *Add account*. Settings has no FAB.
 
 Local notifications only (no server). For each active recurring payment the
 user chooses which of 3 / 2 / 1 days before and morning-of fire; all, some,
-or none. Tapping a notification opens the payment in Movements with *Pay
-now* visible.
+or none. Reminders fire at 09:00 local time. Tapping a notification opens
+the Recurring payments screen with that payment's actions dialog open.
+
+Overdue payments: an occurrence that is already overdue gets no further
+reminders; the payment's next occurrence keeps its reminders. Tapping one of
+those next-occurrence reminders opens the dialog for the overdue occurrence,
+because that is the one Pay and Skip act on; the dialog shows its date.
 
 The recurring card stack is separate from notifications. Dismissing a card
 never changes reminders; paying an occurrence cancels its remaining
@@ -269,6 +274,17 @@ Shown per account and overall: current balance minus the unconfirmed
 recurring payments still due this month. `[Q10]` confirm this rule when the
 slice comes up. Decided: recurring payments with no account count in the
 overall projection but not in any account's.
+
+## Development tools
+
+Shown only in development builds (`__DEV__`), never in a release build.
+
+- **Test reminder (dev)** (Settings): schedules one reminder 15 seconds from
+  now for the first recurring payment with an occurrence to remind about,
+  with the same content, tap behavior and actions dialog as a real one. It
+  asks for notification permission if needed. Its identifier starts with
+  `dev-test:` rather than `reminder:`, so reminder syncs leave it alone.
+  Code: `src/dev/test-reminder.ts`.
 
 ## Rules carried over from CLAUDE.md
 

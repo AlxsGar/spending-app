@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { StyleSheet } from 'react-native';
 import { IconButton } from 'react-native-paper';
 
@@ -26,6 +26,9 @@ type Props = {
   subtitle?: string;
   cancelLabel: string;
   disabled?: boolean;
+  // Opens the dialog from outside (a tapped notification) each time this
+  // number changes to a new value; leave it out for a menu only the ⋮ opens.
+  openSignal?: number;
 };
 
 // A ⋮ button that opens a centered dialog listing the actions for one item
@@ -42,11 +45,23 @@ export function ActionMenu({
   subtitle,
   cancelLabel,
   disabled,
+  openSignal,
 }: Props) {
   const [open, setOpen] = useState(false);
   // Set synchronously: a second tap can arrive before a re-render removes the
   // rows. Reset each time the dialog opens.
   const [inFlight] = useState(createOnce);
+
+  // A new openSignal opens the dialog (state adjusted while rendering, the
+  // React way to react to a changed prop), and each opening re-arms the guard.
+  const [seenSignal, setSeenSignal] = useState<number | undefined>(undefined);
+  if (openSignal !== undefined && openSignal !== seenSignal) {
+    setSeenSignal(openSignal);
+    setOpen(true);
+  }
+  useEffect(() => {
+    if (open) inFlight.reset();
+  }, [open, inFlight]);
 
   return (
     <>

@@ -188,6 +188,8 @@ describe('new recurring payment screen', () => {
       endDate: null,
       note: 'Annual deal',
       active: true,
+      // The Settings default for a new payment: 1 day before and the morning of.
+      notifyDaysBefore: '1,0',
     });
     await waitFor(() => expect(mockBack).toHaveBeenCalled());
     expect(useRecurringStore.getState().payments.map((item) => item.id)).toEqual([6]);
@@ -688,6 +690,8 @@ describe('edit recurring payment screen', () => {
         endDate: null,
         note: 'monthly',
         active: false,
+        // An existing payment keeps what it has stored (none here).
+        notifyDaysBefore: '',
       },
     ]);
     await waitFor(() => expect(mockBack).toHaveBeenCalled());

@@ -8,6 +8,7 @@ import {
   updateAccount,
 } from '@/services/accounts';
 import type { Account, AccountInput } from '@/services/accounts';
+import { requestReminderSync } from '@/services/reminders';
 
 import { useRecurringStore } from './recurring-store';
 import { useTransactionsStore } from './transactions-store';
@@ -55,6 +56,8 @@ export const useAccountsStore = create<AccountsState>((set, get) => ({
         accounts: state.accounts.map((item) => (item.id === id ? account : item)),
         saveError: false,
       }));
+      // A reminder's amount is shown in the account's currency.
+      void requestReminderSync();
       return true;
     } catch {
       set({ saveError: true });
@@ -77,6 +80,8 @@ export const useAccountsStore = create<AccountsState>((set, get) => ({
         accounts: state.accounts.filter((item) => item.id !== id),
         saveError: false,
       }));
+      // The cascade deleted the account's recurring payments and their reminders.
+      void requestReminderSync();
       return true;
     } catch {
       set({ saveError: true });

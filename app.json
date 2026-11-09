@@ -30,7 +30,13 @@
         }
       ],
       "expo-sqlite",
-      "expo-localization"
+      "expo-localization",
+      [
+        "expo-notifications",
+        {
+          "color": "#10B981"
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,

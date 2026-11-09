@@ -100,6 +100,8 @@ export const opacity = {
   divider: 0.1,
   disabled: 0.4,
   scrim: 0.7,
+  // The fill of a selected chip: the accent color over the screen.
+  selected: 0.16,
 } as const;
 
 export function withOpacity(hex: string, alpha: number): string {

@@ -22,6 +22,8 @@ type Props = {
   onSkip?: (id: number) => void;
   // The header is left out on the Recurring payments screen, whose title says it.
   hideHeader?: boolean;
+  // Opens one payment's actions dialog when `signal` changes (a tapped reminder).
+  openRequest?: { id: number; signal: number };
 };
 
 // The "Recurring payments" section: a header and one row per payment, soonest
@@ -36,6 +38,7 @@ export function RecurringSection({
   onPay,
   onSkip,
   hideHeader,
+  openRequest,
 }: Props) {
   const { t } = useTranslation();
   const today = useToday();
@@ -64,6 +67,7 @@ export function RecurringSection({
           account={payment.accountId === null ? null : (known.get(payment.accountId) ?? null)}
           defaultCurrency={defaultCurrency}
           onPress={() => onOpen(payment.id)}
+          openSignal={openRequest?.id === payment.id ? openRequest.signal : undefined}
           actions={
             onPay && onSkip
               ? {

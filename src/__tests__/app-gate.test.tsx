@@ -20,7 +20,11 @@ jest.mock('expo-router', () => {
   MockStack.Screen = function MockStackScreen() {
     return null;
   };
-  return { Stack: MockStack };
+  return {
+    Stack: MockStack,
+    useRouter: () => ({ navigate: jest.fn() }),
+    useRootNavigationState: () => ({ key: 'root' }),
+  };
 });
 
 describe('AppGate', () => {

@@ -291,6 +291,38 @@ export const en = {
     english: 'English',
     spanish: 'Español',
     saveError: 'Could not save your language. Try again.',
+    defaultReminders: 'Default reminders',
+    defaultRemindersHint: 'Used for new recurring payments. Existing ones keep theirs.',
+    remindersSaveError: 'Could not save your default reminders. Try again.',
+    notifications: 'Notifications',
+    notifications_granted: 'Allowed. Reminders can fire.',
+    notifications_denied: 'Not allowed. Reminders will not fire until you allow notifications.',
+    notifications_undetermined:
+      'Not asked yet. You will be asked when you save a payment with reminders.',
+    openSettings: 'Open settings',
+    // Development tools (shown only in development builds, see docs/spec.md).
+    dev: {
+      testReminder: 'Test reminder (dev)',
+      testReminderAction: 'Send in 15 seconds',
+      testAmount: '(test)',
+    },
+  },
+  reminders: {
+    channelName: 'Reminders',
+    label: 'Remind me',
+    option3: '3 days before',
+    option2: '2 days before',
+    option1: '1 day before',
+    option0: 'Morning of',
+    deniedNote:
+      'Reminders are saved, but they will not fire until notifications are allowed for this app. You can change this in Settings.',
+    // "Due in 3 days · MX$5,000.00". _many is only used by Spanish; es.ts is
+    // typed from this file, so it is here too.
+    dueIn_one: 'Due in {{count}} day · {{amount}}',
+    dueIn_many: 'Due in {{count}} days · {{amount}}',
+    dueIn_other: 'Due in {{count}} days · {{amount}}',
+    dueTomorrow: 'Due tomorrow · {{amount}}',
+    dueToday: 'Due today · {{amount}}',
   },
   common: {
     retry: 'Try again',

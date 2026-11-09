@@ -1,5 +1,6 @@
 import { DarkTheme, ThemeProvider } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
+import { useEffect } from 'react';
 import { I18nextProvider } from 'react-i18next';
 import { StyleSheet } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -7,6 +8,7 @@ import { PaperProvider } from 'react-native-paper';
 
 import { AppGate } from '@/components/app-gate';
 import i18n from '@/i18n';
+import { startReminderNotifications } from '@/stores/notification-taps';
 import { colors, paperTheme } from '@/theme';
 
 const navigationTheme = {
@@ -29,6 +31,10 @@ const styles = StyleSheet.create({
 });
 
 export default function RootLayout() {
+  // Notification handling starts with the app, before the database and language
+  // are ready: a tap that launches the app is queued until the gate opens.
+  useEffect(() => startReminderNotifications(i18n.t('reminders.channelName')), []);
+
   return (
     // Gestures (swiping a recurring card) need the root view.
     <GestureHandlerRootView style={styles.root}>

@@ -9,6 +9,7 @@ import { toDay } from '@/services/recurring';
 import type { RecurringPayment } from '@/services/recurring';
 import { useAccounts } from '@/stores/accounts-store';
 import { useDefaultCurrency } from '@/stores/default-currency';
+import { useDefaultReminders } from '@/stores/default-reminders';
 import { useRecurringStore } from '@/stores/recurring-store';
 import { showSuccess } from '@/stores/success-store';
 
@@ -17,6 +18,7 @@ export default function NewRecurringScreen() {
   const router = useRouter();
   const { accounts, status, reload } = useAccounts();
   const defaultCurrency = useDefaultCurrency();
+  const defaultReminders = useDefaultReminders();
   const add = useRecurringStore((state) => state.add);
   // The payment just created that starts today, while the question is open.
   const [askAbout, setAskAbout] = useState<RecurringPayment | null>(null);
@@ -33,7 +35,12 @@ export default function NewRecurringScreen() {
   };
 
   let body;
-  if (status === 'idle' || status === 'loading' || defaultCurrency === null) {
+  if (
+    status === 'idle' ||
+    status === 'loading' ||
+    defaultCurrency === null ||
+    defaultReminders === null
+  ) {
     body = <LoadingState />;
   } else if (status === 'error') {
     body = (
@@ -53,6 +60,7 @@ export default function NewRecurringScreen() {
           accounts={accounts}
           initialAccountId={null}
           defaultCurrency={defaultCurrency}
+          initialReminders={defaultReminders}
           onSubmit={async (input) => {
             const saved = await add(input);
             if (!saved) return false;

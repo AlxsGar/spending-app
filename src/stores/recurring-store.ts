@@ -10,6 +10,7 @@ import {
   updateRecurring,
 } from '@/services/recurring';
 import type { Day, RecurringInput, RecurringPayment } from '@/services/recurring';
+import { requestReminderSync } from '@/services/reminders';
 import { AlreadyHandledError, payOccurrence, skipOccurrence } from '@/services/recurring-actions';
 
 import { useTransactionsStore } from './transactions-store';
@@ -89,6 +90,7 @@ export const useRecurringStore = create<RecurringState>((set, get) => ({
     try {
       const created = await createRecurring(input);
       set((state) => ({ payments: [...state.payments, created] }));
+      void requestReminderSync();
       return created;
     } catch (error) {
       // Diagnostic, like the list failure above.
@@ -102,6 +104,8 @@ export const useRecurringStore = create<RecurringState>((set, get) => ({
       set((state) => ({
         payments: state.payments.map((item) => (item.id === id ? updated : item)),
       }));
+      // Covers a schedule, reminder or active change.
+      void requestReminderSync();
       return updated;
     } catch (error) {
       // Diagnostic, like the list failure above.
@@ -115,6 +119,7 @@ export const useRecurringStore = create<RecurringState>((set, get) => ({
       // The database set the linked transactions' recurring_id to NULL.
       useTransactionsStore.getState().unlinkRecurring(id);
       set((state) => ({ payments: state.payments.filter((item) => item.id !== id) }));
+      void requestReminderSync();
       return true;
     } catch (error) {
       // Diagnostic, like the list failure above.
@@ -151,6 +156,8 @@ export const useRecurringStore = create<RecurringState>((set, get) => ({
           item.id === id ? { ...item, lastConfirmedAt: payment.lastConfirmedAt } : item,
         ),
       }));
+      // The paid occurrence's reminders go; the next occurrence's are planned.
+      void requestReminderSync();
       return 'paid';
     } catch (error) {
       // Already paid (an overlapping call, or a stale card): nothing was written.
@@ -173,6 +180,7 @@ export const useRecurringStore = create<RecurringState>((set, get) => ({
           item.id === id ? { ...item, lastConfirmedAt: payment.lastConfirmedAt } : item,
         ),
       }));
+      void requestReminderSync();
       return 'skipped';
     } catch (error) {
       if (error instanceof AlreadyHandledError) {
@@ -184,12 +192,15 @@ export const useRecurringStore = create<RecurringState>((set, get) => ({
       return 'failed';
     }
   },
-  setLastConfirmed: (id, day) =>
+  setLastConfirmed: (id, day) => {
     set((state) => ({
       payments: state.payments.map((item) =>
         item.id === id ? { ...item, lastConfirmedAt: day } : item,
       ),
-    })),
+    }));
+    // Undoing a payment (deleting its expense) brings its reminders back.
+    void requestReminderSync();
+  },
   dropForAccount: (accountId) =>
     set((state) => ({
       payments: state.payments.filter((item) => item.accountId !== accountId),

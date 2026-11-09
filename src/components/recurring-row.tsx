@@ -29,6 +29,8 @@ type Props = {
   // The ⋮ menu (Pay now, Skip, Edit). Left out, the row has no menu (account
   // detail): it only opens the edit form when tapped.
   actions?: RowActions;
+  // Opens the ⋮ dialog when this changes (a tapped reminder).
+  openSignal?: number;
 };
 
 const EVERY_KEYS = {
@@ -52,6 +54,7 @@ export function RecurringRow({
   defaultCurrency,
   onPress,
   actions,
+  openSignal,
 }: Props) {
   const { t, i18n } = useTranslation();
   const currency = account ? account.currency : defaultCurrency;
@@ -154,6 +157,7 @@ export function RecurringRow({
                   : dueText(t, i18n.language, target, today, target < today)
               }
               cancelLabel={t('common.cancel')}
+              openSignal={openSignal}
             />
           ) : null}
         </View>

@@ -87,6 +87,7 @@ export default function EditRecurringScreen() {
           initialAccountId={payment.accountId}
           defaultCurrency={defaultCurrency}
           lastConfirmedAt={payment.lastConfirmedAt}
+          initialReminders={payment.notifyDaysBefore}
           initial={{
             name: payment.name,
             amount: formatCentsForInput(

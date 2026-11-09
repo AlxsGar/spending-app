@@ -37,8 +37,8 @@ const mockDb = {
   }),
   runAsync: jest.fn(async (sql: string, ...args: unknown[]) => {
     if (sql.startsWith('UPDATE')) {
-      const [accountId, name, amount, note, interval, unit, startDate, endDate, active, id] =
-        args as [number, string, number, string | null, number, string, string, string | null, number, number];
+      const [accountId, name, amount, note, interval, unit, startDate, endDate, active, notify, id] =
+        args as [number, string, number, string | null, number, string, string, string | null, number, string, number];
       const row = rows.find((item) => item.id === id);
       if (!row) return { lastInsertRowId: 0, changes: 0 };
       Object.assign(row, {
@@ -51,6 +51,7 @@ const mockDb = {
         start_date: startDate,
         end_date: endDate,
         active,
+        notify_days_before: notify,
       });
       return { lastInsertRowId: 0, changes: 1 };
     }
@@ -60,8 +61,8 @@ const mockDb = {
       rows = rows.filter((item) => item.id !== id);
       return { lastInsertRowId: 0, changes: before - rows.length };
     }
-    const [accountId, name, amount, note, interval, unit, startDate, endDate, active, createdAt] =
-      args as [number, string, number, string | null, number, string, string, string | null, number, string];
+    const [accountId, name, amount, note, interval, unit, startDate, endDate, notify, active, createdAt] =
+      args as [number, string, number, string | null, number, string, string, string | null, string, number, string];
     const id = nextId++;
     rows.push({
       id,
@@ -73,7 +74,7 @@ const mockDb = {
       unit,
       start_date: startDate,
       end_date: endDate,
-      notify_days_before: '',
+      notify_days_before: notify,
       active,
       last_confirmed_at: null,
       dismissed_at: null,
@@ -255,6 +256,25 @@ describe('recurring service', () => {
     expect(await listRecurring()).toEqual([a, b]);
     expect(await getRecurring(b.id)).toEqual(b);
     expect(await getRecurring(99)).toBeNull();
+  });
+
+  it('stores the reminder choices normalised: valid offsets only, no repeats, fixed order', async () => {
+    const none = await createRecurring(input, now);
+    expect(none.notifyDaysBefore).toBe('');
+    const some = await createRecurring({ ...input, notifyDaysBefore: '0, 3,3,7,x,1' }, now);
+    expect(some.notifyDaysBefore).toBe('3,1,0');
+    expect(rows[1].notify_days_before).toBe('3,1,0');
+  });
+
+  it('edit changes the reminder choices when given and keeps the stored ones when left out', async () => {
+    const created = await createRecurring({ ...input, notifyDaysBefore: '1' }, now);
+    const kept = await updateRecurring(created.id, { ...input, name: 'Renamed' }, now);
+    expect(kept.notifyDaysBefore).toBe('1');
+    const changed = await updateRecurring(created.id, { ...input, notifyDaysBefore: '2,0' }, now);
+    expect(changed.notifyDaysBefore).toBe('2,0');
+    expect(rows[0].notify_days_before).toBe('2,0');
+    const cleared = await updateRecurring(created.id, { ...input, notifyDaysBefore: '' }, now);
+    expect(cleared.notifyDaysBefore).toBe('');
   });
 
   it('updates the editable fields and keeps notify, last confirmed and created_at', async () => {

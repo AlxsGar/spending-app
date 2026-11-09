@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ScrollView, StyleSheet, View } from 'react-native';
 
+import { ReminderChips } from '@/components/reminder-chips';
 import {
   AppButton,
   AppText,
@@ -27,6 +28,10 @@ import {
   validateRecurringInput,
 } from '@/services/recurring';
 import type { Day, RecurringInput, Unit } from '@/services/recurring';
+import {
+  useNotificationPermission,
+  useNotificationPermissionStore,
+} from '@/stores/notification-permission';
 import { spacing } from '@/theme';
 
 type Props = {
@@ -49,6 +54,9 @@ type Props = {
   // Editing a payment that was paid or skipped: its last handled occurrence.
   // `initial.startDate` is then that day, and the schedule counts from it.
   lastConfirmedAt?: Day | null;
+  // The reminder choices to start with: the Settings default for a new payment,
+  // the stored ones when editing ("3,1,0"; empty means none).
+  initialReminders: string;
   // Extra content under the save button (the edit screen's delete action).
   children?: ReactNode;
   // Resolves true when the payment was saved.
@@ -70,6 +78,7 @@ export function RecurringForm({
   defaultCurrency,
   initial,
   lastConfirmedAt = null,
+  initialReminders,
   children,
   onSubmit,
 }: Props) {
@@ -83,6 +92,8 @@ export function RecurringForm({
   const [endDate, setEndDate] = useState<Day | null>(initial?.endDate ?? null);
   const [note, setNote] = useState(initial?.note ?? '');
   const [active, setActive] = useState(initial?.active ?? true);
+  const [reminders, setReminders] = useState(initialReminders);
+  const permission = useNotificationPermission();
   const [submitted, setSubmitted] = useState(false);
   const [saving, setSaving] = useState(false);
   const [failed, setFailed] = useState(false);
@@ -101,6 +112,7 @@ export function RecurringForm({
     endDate,
     note,
     active,
+    notifyDaysBefore: reminders,
   };
   // "Today" is read each time, never captured at mount, so a form left open
   // past midnight follows the new day.
@@ -121,6 +133,10 @@ export function RecurringForm({
     if (validate()) return;
     setSaving(true);
     setFailed(false);
+    // The first save with any reminder asks for notification permission (the
+    // system only asks while it is undecided). A refusal never blocks saving:
+    // the reminders are saved and the note below says they will not fire.
+    if (reminders !== '') await useNotificationPermissionStore.getState().request();
     const ok = await onSubmit(input);
     // On success the screen navigates away, so only reset on failure.
     if (!ok) {
@@ -264,6 +280,13 @@ export function RecurringForm({
         helperText={t('recurring.charCount', { count: note.length, max: NOTE_MAX_LENGTH })}
         errorText={errorFor(['noteTooLong'])}
       />
+      <View style={styles.section}>
+        <AppText variant="bodyStrong">{t('reminders.label')}</AppText>
+        <ReminderChips value={reminders} onChange={setReminders} />
+        {reminders !== '' && permission === 'denied' ? (
+          <AppText color="textSecondary">{t('reminders.deniedNote')}</AppText>
+        ) : null}
+      </View>
       <SwitchRow label={t('recurring.activeLabel')} value={active} onChange={setActive} />
       {failed ? <AppText color="alert">{t('recurring.saveError')}</AppText> : null}
       <AppButton label={t('recurring.save')} onPress={() => void save()} disabled={saving} />

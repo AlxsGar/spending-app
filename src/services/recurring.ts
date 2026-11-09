@@ -3,6 +3,7 @@ import { initDb } from './db';
 import { localDayKey } from './day-groups';
 import { parseAmountToCents } from './money';
 import type { AmountParseError } from './money';
+import { formatReminders, parseReminders } from './reminder-offsets';
 import { NOTE_MAX_LENGTH } from './transactions';
 import { serialized } from './write-queue';
 
@@ -54,6 +55,9 @@ export type RecurringInput = {
   endDate: Day | null;
   note: string;
   active: boolean;
+  // The reminder choices ("3,1,0", see reminder-offsets.ts). Create: left out
+  // means none. Update: left out keeps what is stored.
+  notifyDaysBefore?: string;
 };
 
 export type RecurringValidationCode =
@@ -388,6 +392,13 @@ export function canHandleOccurrence(payment: RecurringPayment, occurrence: Day, 
   );
 }
 
+// The first occurrence strictly after `occurrence` (an occurrence of the
+// schedule), or null when the end date leaves none. Reminders use it for an
+// overdue payment: the overdue one stays quiet, the next one is scheduled.
+export function occurrenceAfter(schedule: Schedule, occurrence: Day): Day | null {
+  return occurrenceAt(schedule, latestIndexOnOrBefore(schedule, occurrence) + 1);
+}
+
 // The earliest start date the edit form offers: today, or for a payment that
 // was paid or skipped, the day after that occurrence if that is later.
 export function startDateFloor(lastConfirmedAt: Day | null, today: Day): Day {
@@ -552,9 +563,10 @@ export async function createRecurring(
 ): Promise<RecurringPayment> {
   const parsed = await parse(input, toDay(now));
   const createdAt = now.toISOString();
+  const notifyDaysBefore = formatReminders(parseReminders(input.notifyDaysBefore));
   const db = await initDb();
   const result = await db.runAsync(
-    "INSERT INTO recurring_payments (account_id, name, amount_cents, note, interval, unit, start_date, end_date, notify_days_before, active, last_confirmed_at, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, '', ?, NULL, ?)",
+    'INSERT INTO recurring_payments (account_id, name, amount_cents, note, interval, unit, start_date, end_date, notify_days_before, active, last_confirmed_at, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?)',
     parsed.accountId,
     parsed.name,
     parsed.amountCents,
@@ -563,21 +575,22 @@ export async function createRecurring(
     parsed.unit,
     parsed.startDate,
     parsed.endDate,
+    notifyDaysBefore,
     parsed.active ? 1 : 0,
     createdAt,
   );
   return {
     id: result.lastInsertRowId,
     ...parsed,
-    notifyDaysBefore: '',
+    notifyDaysBefore,
     lastConfirmedAt: null,
     dismissedAt: null,
     createdAt,
   };
 }
 
-// Changes account, name, amount, schedule, note and active. notify_days_before,
-// last_confirmed_at and created_at never change here, so paid and skipped
+// Changes account, name, amount, schedule, note, active and (when given) the
+// reminder choices. last_confirmed_at and created_at never change here, so paid and skipped
 // occurrences stay handled and their transactions are untouched. The next due
 // date is computed from the schedule, so changing interval, unit or start date
 // moves it and renames or amount edits do not. Never paid: an unchanged start
@@ -598,9 +611,13 @@ async function update(id: number, input: RecurringInput, now: Date): Promise<Rec
   if (!existing) throw new Error(`Recurring payment ${id} not found`);
   const parsed = await parse(input, toDay(now), existing.startDate, existing.lastConfirmedAt);
   const startDate = effectiveStartDate(existing, parsed);
+  const notifyDaysBefore =
+    input.notifyDaysBefore === undefined
+      ? existing.notifyDaysBefore
+      : formatReminders(parseReminders(input.notifyDaysBefore));
   const db = await initDb();
   const result = await db.runAsync(
-    'UPDATE recurring_payments SET account_id = ?, name = ?, amount_cents = ?, note = ?, interval = ?, unit = ?, start_date = ?, end_date = ?, active = ? WHERE id = ?',
+    'UPDATE recurring_payments SET account_id = ?, name = ?, amount_cents = ?, note = ?, interval = ?, unit = ?, start_date = ?, end_date = ?, active = ?, notify_days_before = ? WHERE id = ?',
     parsed.accountId,
     parsed.name,
     parsed.amountCents,
@@ -610,10 +627,11 @@ async function update(id: number, input: RecurringInput, now: Date): Promise<Rec
     startDate,
     parsed.endDate,
     parsed.active ? 1 : 0,
+    notifyDaysBefore,
     id,
   );
   if (result.changes === 0) throw new Error(`Recurring payment ${id} not found`);
-  return { ...existing, ...parsed, startDate };
+  return { ...existing, ...parsed, startDate, notifyDaysBefore };
 }
 
 // Hides the card of one occurrence. Does not touch last_confirmed_at. Throws

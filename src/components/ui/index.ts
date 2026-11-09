@@ -15,6 +15,8 @@ export { CurrencyPicker } from './CurrencyPicker';
 export { EmptyState } from './EmptyState';
 export { ErrorState } from './ErrorState';
 export { DateField } from './DateField';
+export { FilterChips } from './FilterChips';
+export type { ChipOption } from './FilterChips';
 export { Fab } from './Fab';
 export type { FabAction } from './Fab';
 export { IconPicker } from './IconPicker';

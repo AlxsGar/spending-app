@@ -289,6 +289,36 @@ export const es: Translations = {
     english: 'English',
     spanish: 'Español',
     saveError: 'No se pudo guardar tu idioma. Inténtalo de nuevo.',
+    defaultReminders: 'Recordatorios predeterminados',
+    defaultRemindersHint: 'Se usan en los pagos recurrentes nuevos. Los existentes conservan los suyos.',
+    remindersSaveError: 'No se pudieron guardar tus recordatorios predeterminados. Inténtalo de nuevo.',
+    notifications: 'Notificaciones',
+    notifications_granted: 'Permitidas. Los recordatorios pueden sonar.',
+    notifications_denied:
+      'No permitidas. Los recordatorios no sonarán hasta que permitas las notificaciones.',
+    notifications_undetermined:
+      'Aún no se ha preguntado. Se te preguntará al guardar un pago con recordatorios.',
+    openSettings: 'Abrir ajustes',
+    dev: {
+      testReminder: 'Recordatorio de prueba (dev)',
+      testReminderAction: 'Enviar en 15 segundos',
+      testAmount: '(prueba)',
+    },
+  },
+  reminders: {
+    channelName: 'Recordatorios',
+    label: 'Recordarme',
+    option3: '3 días antes',
+    option2: '2 días antes',
+    option1: '1 día antes',
+    option0: 'Por la mañana',
+    deniedNote:
+      'Los recordatorios se guardan, pero no sonarán hasta que se permitan las notificaciones para esta app. Puedes cambiarlo en Ajustes.',
+    dueIn_one: 'Vence en {{count}} día · {{amount}}',
+    dueIn_many: 'Vence en {{count}} días · {{amount}}',
+    dueIn_other: 'Vence en {{count}} días · {{amount}}',
+    dueTomorrow: 'Vence mañana · {{amount}}',
+    dueToday: 'Vence hoy · {{amount}}',
   },
   common: {
     retry: 'Reintentar',

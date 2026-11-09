@@ -1,4 +1,4 @@
-import { fireEvent, screen, waitFor } from '@testing-library/react-native';
+import { act, fireEvent, screen, waitFor } from '@testing-library/react-native';
 import { StyleSheet } from 'react-native';
 
 import RecurringListScreen from '@/app/recurring/index';
@@ -18,10 +18,13 @@ fakeAnimationTimers();
 const consoleError = silenceConsoleError();
 
 const mockPush = jest.fn();
+// The params a tapped reminder opens the screen with (see "tapped reminder").
+let mockParams: Record<string, string> = {};
 
 jest.mock('expo-router', () => ({
   Stack: { Screen: () => null },
   useRouter: () => ({ push: mockPush }),
+  useLocalSearchParams: () => mockParams,
 }));
 jest.mock('@/services/accounts', () => ({
   listAccounts: jest.fn(),
@@ -95,6 +98,78 @@ beforeEach(() => {
   useAccountsStore.setState({ accounts: [], status: 'idle', saveError: false });
   useRecurringStore.setState({ payments: [], status: 'idle' });
   useSuccessStore.setState({ current: null });
+  mockParams = {};
+});
+
+describe('tapped reminder', () => {
+  const tapped = async (
+    payments: RecurringPayment[],
+    params: Record<string, string>,
+  ) => {
+    (listRecurring as jest.Mock).mockResolvedValue(payments);
+    mockParams = params;
+    await renderWithProviders(<RecurringListScreen />);
+    // The dialog, when it opens, repeats the name.
+    await screen.findAllByText('Rent');
+  };
+
+  it('opens the actions dialog of the tapped payment (Pay, Skip, Edit)', async () => {
+    const day = inDays(2);
+    await tapped(
+      [payment(1, 'Rent', 100, { startDate: day }), payment(2, 'Gym', 100, { startDate: day })],
+      { open: '1', occ: day, n: '1' },
+    );
+    expect(await screen.findByText(`Pay ${fmt(day)}`)).toBeTruthy();
+    expect(screen.getByText(`Skip ${fmt(day)}`)).toBeTruthy();
+    expect(screen.getByText('Edit')).toBeTruthy();
+    // Only one dialog, for the tapped payment.
+    expect(screen.getAllByText(`Pay ${fmt(day)}`)).toHaveLength(1);
+  });
+
+  it('opens once: closing it does not bring it back', async () => {
+    const day = inDays(2);
+    await tapped([payment(1, 'Rent', 100, { startDate: day })], { open: '1', occ: day, n: '1' });
+    await screen.findByText(`Pay ${fmt(day)}`);
+    fireEvent.press(screen.getByText(en.common.cancel));
+    await waitFor(() => expect(screen.queryByText(`Pay ${fmt(day)}`)).toBeNull());
+    await act(async () => {
+      jest.advanceTimersByTime(1000);
+    });
+    expect(screen.queryByText(`Pay ${fmt(day)}`)).toBeNull();
+  });
+
+  it('only shows the list when the payment no longer exists', async () => {
+    const day = inDays(2);
+    await tapped([payment(1, 'Rent', 100, { startDate: day })], { open: '99', occ: day, n: '1' });
+    expect(screen.queryByText(`Pay ${fmt(day)}`)).toBeNull();
+  });
+
+  it('only shows the list when the payment is inactive', async () => {
+    const day = inDays(2);
+    await tapped([payment(1, 'Rent', 100, { startDate: day, active: false })], {
+      open: '1',
+      occ: day,
+      n: '1',
+    });
+    expect(screen.queryByText(`Pay ${fmt(day)}`)).toBeNull();
+  });
+
+  it('only shows the list when the occurrence was already handled', async () => {
+    const day = inDays(2);
+    // Paid already: the next occurrence is a month on, and the tapped one is handled.
+    await tapped([payment(1, 'Rent', 100, { startDate: day, lastConfirmedAt: day })], {
+      open: '1',
+      occ: day,
+      n: '1',
+    });
+    expect(screen.queryByText(/^Pay /)).toBeNull();
+  });
+
+  it('shows no dialog without a tap (no params)', async () => {
+    const day = inDays(2);
+    await tapped([payment(1, 'Rent', 100, { startDate: day })], {});
+    expect(screen.queryByText(`Pay ${fmt(day)}`)).toBeNull();
+  });
 });
 
 describe('Recurring payments screen', () => {
