@@ -140,6 +140,33 @@ custom component built from Paper `Surface` and `TouchableRipple`.
 - After a dismissal the next card and the layers move up (`deck.settleDuration`).
   With reduce motion on, nothing animates: it switches at once.
 
+## Action menu
+
+A row with a few secondary actions (the Recurring payments screen) uses the
+`ActionMenu` wrapper in `src/components/ui/`; never build another. It is a ⋮
+`IconButton` in the row's right slot, after the amount, that opens a centered
+Paper dialog (through `ActionDialog`) titled with the item's name, with the date
+the actions apply to under it and one row per action. There is no dropdown, so
+there is no positioning. Paper `Menu` dropdowns are currently avoided because of
+a known iOS positioning issue (see docs/slices.md, 5b2).
+
+- The row tap stays the main action (open or edit). The menu holds the rest.
+- Order: the primary actions first, then Edit last ("Pay Nov 1", "Skip Nov 1",
+  "Edit"). Labels name what they act on when that is not obvious (the date).
+- Hide an action that does not apply instead of disabling it: an inactive or
+  finished payment shows Edit only.
+- The ⋮ button is at least 48 by 48 and has an accessibility label that names
+  the row ("Actions for Rent"). The dialog is unmounted (no fade-out) in the
+  same update that runs the chosen action, so two dialogs are never on screen
+  together (Skip's confirmation replaces it). Only the first action press in an
+  open dialog runs.
+- Cancel and the backdrop close it without running anything.
+- Each action row has an icon (pay, skip, edit). It identifies the action, so it
+  is allowed despite "no decorative icons".
+- Screen-reader behaviour of the open dialog is pending a device check; do not
+  change it until that is reported.
+- A row without actions (account detail) simply leaves the menu out.
+
 ## Do not
 
 - No gradients, drop shadows beyond Paper elevation, or decorative icons.

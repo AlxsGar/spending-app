@@ -6,7 +6,9 @@
  * @jest-environment-options {"timezone": "America/New_York"}
  */
 import {
+  actionOccurrence,
   dayToDate,
+  effectiveStartDate,
   isDay,
   isOnceOnly,
   nextDueDay,
@@ -14,6 +16,7 @@ import {
   parseInterval,
   scheduleState,
   sortRecurring,
+  startDateFloor,
   toDay,
   validateRecurringInput,
 } from '@/services/recurring';
@@ -565,6 +568,146 @@ describe('validateRecurringInput', () => {
   it('limits the note to 140 characters after trimming', () => {
     expect(check({ note: `${'n'.repeat(140)}  ` })).toBeNull();
     expect(check({ note: 'n'.repeat(141) })).toBe('noteTooLong');
+  });
+});
+
+describe('validateRecurringInput after a payment was paid or skipped', () => {
+  const today = '2026-11-09';
+  const handled = '2026-10-15';
+  const ok: RecurringInput = {
+    accountId: 1,
+    name: 'Rent',
+    amount: '12.50',
+    interval: '1',
+    unit: 'month',
+    startDate: handled,
+    endDate: null,
+    note: '',
+    active: true,
+  };
+  const check = (extra: Partial<RecurringInput>) =>
+    validateRecurringInput({ ...ok, ...extra }, 'USD', today, '2026-01-15', handled);
+
+  it('the shown start date (the handled occurrence) stays valid although it is in the past', () => {
+    expect(check({})).toBeNull();
+  });
+
+  it('a different start date must be after the handled one and today or later', () => {
+    expect(check({ startDate: '2026-10-14' })).toBe('startDateNotAfterHandled');
+    expect(check({ startDate: '2026-10-01' })).toBe('startDateNotAfterHandled');
+    expect(check({ startDate: '2026-10-16' })).toBe('startDateInPast');
+    expect(check({ startDate: '2026-11-08' })).toBe('startDateInPast');
+    expect(check({ startDate: today })).toBeNull();
+    expect(check({ startDate: '2026-12-01' })).toBeNull();
+  });
+
+  it('when the handled occurrence is in the future, the day after it is the minimum', () => {
+    const future = (startDate: string) =>
+      validateRecurringInput({ ...ok, startDate }, 'USD', today, '2026-01-15', '2026-11-15');
+    expect(future('2026-11-15')).toBeNull();
+    expect(future('2026-11-14')).toBe('startDateNotAfterHandled');
+    expect(future('2026-11-16')).toBeNull();
+  });
+
+  it('the end date must be on or after the shown start date', () => {
+    expect(check({ endDate: '2026-10-14' })).toBe('endBeforeStart');
+    expect(check({ endDate: handled })).toBeNull();
+  });
+
+  it('ignores the stored start date once something was handled', () => {
+    // 2026-01-15 is the stored (past) start date; entering it is no longer a
+    // "kept unchanged" case, it is before the handled occurrence.
+    expect(check({ startDate: '2026-01-15' })).toBe('startDateNotAfterHandled');
+  });
+});
+
+describe('startDateFloor', () => {
+  it('is today for a payment that was never handled', () => {
+    expect(startDateFloor(null, '2026-11-09')).toBe('2026-11-09');
+  });
+
+  it('is the later of today and the day after the handled occurrence', () => {
+    expect(startDateFloor('2026-10-15', '2026-11-09')).toBe('2026-11-09');
+    expect(startDateFloor('2026-11-15', '2026-11-09')).toBe('2026-11-16');
+    expect(startDateFloor('2026-11-09', '2026-11-09')).toBe('2026-11-10');
+    expect(startDateFloor('2026-02-28', '2026-01-01')).toBe('2026-03-01');
+  });
+});
+
+describe('effectiveStartDate', () => {
+  const existing = {
+    interval: 1,
+    unit: 'month' as Unit,
+    startDate: '2026-01-31',
+    lastConfirmedAt: '2026-02-28' as string | null,
+  };
+
+  it('uses the entered date when nothing was handled', () => {
+    expect(
+      effectiveStartDate({ ...existing, lastConfirmedAt: null }, { interval: 2, unit: 'month', startDate: '2026-05-01' }),
+    ).toBe('2026-05-01');
+  });
+
+  it('keeps the stored anchor when the schedule is unchanged and the shown date is left alone', () => {
+    expect(effectiveStartDate(existing, { interval: 1, unit: 'month', startDate: '2026-02-28' })).toBe(
+      '2026-01-31',
+    );
+  });
+
+  it('re-anchors to the handled occurrence when the interval or the unit changed', () => {
+    expect(effectiveStartDate(existing, { interval: 2, unit: 'month', startDate: '2026-02-28' })).toBe(
+      '2026-02-28',
+    );
+    expect(effectiveStartDate(existing, { interval: 1, unit: 'week', startDate: '2026-02-28' })).toBe(
+      '2026-02-28',
+    );
+  });
+
+  it('uses a different entered date as the new anchor', () => {
+    expect(effectiveStartDate(existing, { interval: 3, unit: 'week', startDate: '2026-04-01' })).toBe(
+      '2026-04-01',
+    );
+  });
+});
+
+describe('actionOccurrence (what Pay now and Skip act on)', () => {
+  const payment = (extra: Partial<RecurringPayment> = {}): RecurringPayment => ({
+    id: 1,
+    accountId: 1,
+    name: 'Rent',
+    amountCents: 100,
+    note: null,
+    interval: 1,
+    unit: 'month',
+    startDate: '2026-10-15',
+    endDate: null,
+    notifyDaysBefore: '',
+    active: true,
+    lastConfirmedAt: null,
+    dismissedAt: null,
+    createdAt: '2026-01-01T00:00:00.000Z',
+    ...extra,
+  });
+
+  it('is the current (overdue) occurrence when there is one', () => {
+    expect(actionOccurrence(payment(), '2026-11-09')).toBe('2026-10-15');
+    expect(actionOccurrence(payment({ startDate: '2026-11-09' }), '2026-11-09')).toBe('2026-11-09');
+  });
+
+  it('is the next occurrence once the current one was handled, or none is due yet', () => {
+    expect(actionOccurrence(payment({ lastConfirmedAt: '2026-10-15' }), '2026-11-09')).toBe('2026-11-15');
+    expect(actionOccurrence(payment({ startDate: '2026-12-01' }), '2026-11-09')).toBe('2026-12-01');
+  });
+
+  it('ignores a dismissal', () => {
+    expect(actionOccurrence(payment({ dismissedAt: '2026-10-15' }), '2026-11-09')).toBe('2026-10-15');
+  });
+
+  it('is null for an inactive or finished payment', () => {
+    expect(actionOccurrence(payment({ active: false }), '2026-11-09')).toBeNull();
+    expect(
+      actionOccurrence(payment({ endDate: '2026-10-20', lastConfirmedAt: '2026-10-15' }), '2026-11-09'),
+    ).toBeNull();
   });
 });
 

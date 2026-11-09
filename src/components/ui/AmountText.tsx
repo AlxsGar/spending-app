@@ -17,6 +17,8 @@ type Props = {
   colored?: boolean;
   // Show "+" on positive amounts (transaction rows).
   showPlus?: boolean;
+  // Greyed (secondary text), for rows that are finished.
+  muted?: boolean;
 };
 
 const tabular: StyleProp<TextStyle> = { fontVariant: ['tabular-nums'] };
@@ -29,10 +31,12 @@ export function AmountText({
   maxFontSizeMultiplier,
   colored = false,
   showPlus = false,
+  muted = false,
 }: Props) {
   let color: ColorToken = 'text';
   if (colored && cents > 0) color = 'accent';
   if (colored && cents < 0) color = 'alert';
+  if (muted) color = 'textSecondary';
 
   return (
     <AppText

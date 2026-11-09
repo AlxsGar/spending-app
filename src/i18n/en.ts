@@ -180,6 +180,7 @@ export const en = {
     ends: 'Ends {{date}}',
     finished: 'Finished',
     startDateLabel: 'Start date',
+    startDateHandledHint: 'The schedule counts from the last paid or skipped payment.',
     endDateLabel: 'End date (optional)',
     noEndDate: 'No end date',
     clearEndDate: 'Remove end date',
@@ -226,6 +227,29 @@ export const en = {
       loadError: 'Could not load the recurring payments.',
       dismissError: 'Could not dismiss the payment. Try again.',
     },
+    // The ⋮ menu on a row of the Recurring payments screen.
+    menu: {
+      label: 'Actions for {{name}}',
+      pay: 'Pay {{date}}',
+      skip: 'Skip {{date}}',
+      edit: 'Edit',
+    },
+    skip: {
+      title: 'Skip {{date}}?',
+      message:
+        'This marks {{name}} as handled for that date without recording a payment. It cannot be undone.',
+      confirm: 'Skip',
+      done: 'Payment skipped',
+      error: 'Could not skip the payment. Try again.',
+    },
+    // The Pay now screen.
+    payNow: {
+      title: 'Pay {{date}}',
+      titleDefault: 'Pay now',
+      occurrence: 'Due {{date}}',
+      save: 'Record payment',
+      nothingToPay: 'There is nothing left to pay on this recurring payment.',
+    },
     pay: {
       recorded: 'Payment recorded',
       error: 'Could not record the payment. Try again.',
@@ -251,6 +275,7 @@ export const en = {
       invalidUnit: 'Choose day, week, month or year.',
       invalidStartDate: 'Choose a valid start date.',
       startDateInPast: 'The start date cannot be in the past.',
+      startDateNotAfterHandled: 'The start date must be after the last paid or skipped payment.',
       invalidEndDate: 'Choose a valid end date.',
       endBeforeStart: 'The end date cannot be before the start date.',
       noteTooLong: 'The note can have at most 140 characters.',

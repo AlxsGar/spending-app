@@ -86,6 +86,7 @@ export default function EditRecurringScreen() {
           accounts={accounts}
           initialAccountId={payment.accountId}
           defaultCurrency={defaultCurrency}
+          lastConfirmedAt={payment.lastConfirmedAt}
           initial={{
             name: payment.name,
             amount: formatCentsForInput(
@@ -96,7 +97,9 @@ export default function EditRecurringScreen() {
             ),
             interval: String(payment.interval),
             unit: payment.unit,
-            startDate: payment.startDate,
+            // Once paid or skipped the field shows the last handled occurrence,
+            // the anchor the schedule is counted from.
+            startDate: payment.lastConfirmedAt ?? payment.startDate,
             endDate: payment.endDate,
             note: payment.note ?? '',
             active: payment.active,

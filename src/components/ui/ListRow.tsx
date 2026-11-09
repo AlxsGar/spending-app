@@ -8,9 +8,14 @@ type Props = {
   icon: string;
   title: string;
   description?: string;
+  // Rich description (lines with their own colors or icons); used instead of
+  // `description` when given.
+  descriptionContent?: ReactNode;
   // Lines the description may use (Paper's default is 2).
   descriptionLines?: number;
   right?: ReactNode;
+  // Greyed title and icon (a finished item).
+  muted?: boolean;
   onPress?: () => void;
   accessibilityLabel?: string;
 };
@@ -19,22 +24,25 @@ export function ListRow({
   icon,
   title,
   description,
+  descriptionContent,
   descriptionLines,
   right,
+  muted,
   onPress,
   accessibilityLabel,
 }: Props) {
+  const tone = muted ? colors.textSecondary : colors.text;
   return (
     <List.Item
       accessibilityLabel={accessibilityLabel}
       title={title}
-      description={description}
+      description={descriptionContent ? () => descriptionContent : description}
       descriptionNumberOfLines={descriptionLines}
-      titleStyle={typography.bodyStrong}
+      titleStyle={[typography.bodyStrong, { color: tone }]}
       descriptionStyle={styles.description}
       style={styles.item}
       onPress={onPress}
-      left={(props) => <List.Icon {...props} icon={icon} color={colors.text} />}
+      left={(props) => <List.Icon {...props} icon={icon} color={tone} />}
       right={right ? () => right : undefined}
     />
   );

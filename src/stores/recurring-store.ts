@@ -10,13 +10,14 @@ import {
   updateRecurring,
 } from '@/services/recurring';
 import type { Day, RecurringInput, RecurringPayment } from '@/services/recurring';
-import { AlreadyHandledError, payOccurrence } from '@/services/recurring-actions';
+import { AlreadyHandledError, payOccurrence, skipOccurrence } from '@/services/recurring-actions';
 
 import { useTransactionsStore } from './transactions-store';
 
 type Status = 'idle' | 'loading' | 'ready' | 'error';
 
 export type PayOutcome = 'paid' | 'already' | 'failed';
+export type SkipOutcome = 'skipped' | 'already' | 'failed';
 
 type RecurringState = {
   payments: RecurringPayment[];
@@ -34,12 +35,36 @@ type RecurringState = {
   // - already: the occurrence had already been paid (a stale card, or another
   //   call won); nothing was written, the payment was refreshed.
   // - failed: could not be saved.
-  pay: (id: number, occurrence: Day, accountId: number) => Promise<PayOutcome>;
+  // Pay now passes amountCents (the amount entered); quick Paid leaves it out and
+  // the payment's stored amount is used.
+  pay: (
+    id: number,
+    occurrence: Day,
+    accountId: number,
+    amountCents?: number,
+  ) => Promise<PayOutcome>;
+  // Skip: confirms the occurrence without an expense. Same outcomes as pay:
+  // skipped, already (nothing written, payment refreshed), failed.
+  skip: (id: number, occurrence: Day) => Promise<SkipOutcome>;
   // Sets last_confirmed_at in memory (after the database changed it).
   setLastConfirmed: (id: number, day: Day | null) => void;
   // Drops an account's payments from memory after the account was deleted.
   dropForAccount: (accountId: number) => void;
 };
+
+// Brings one payment up to date from the database (after a stale pay or skip).
+async function refreshOne(id: number): Promise<void> {
+  try {
+    const fresh = await getRecurring(id);
+    if (fresh) {
+      useRecurringStore.setState((state) => ({
+        payments: state.payments.map((item) => (item.id === id ? fresh : item)),
+      }));
+    }
+  } catch {
+    // Only a refresh; the next load fixes it.
+  }
+}
 
 export const useRecurringStore = create<RecurringState>((set, get) => ({
   payments: [],
@@ -112,12 +137,13 @@ export const useRecurringStore = create<RecurringState>((set, get) => ({
       return false;
     }
   },
-  pay: async (id, occurrence, accountId) => {
+  pay: async (id, occurrence, accountId, amountCents) => {
     try {
       const { transaction, payment } = await payOccurrence({
         paymentId: id,
         occurrence,
         accountId,
+        ...(amountCents === undefined ? {} : { amountCents }),
       });
       useTransactionsStore.getState().addExisting(transaction);
       set((state) => ({
@@ -131,20 +157,30 @@ export const useRecurringStore = create<RecurringState>((set, get) => ({
       // Not a failure, not logged. Bring this payment up to date from the
       // database, so a stale card goes away.
       if (error instanceof AlreadyHandledError) {
-        try {
-          const fresh = await getRecurring(id);
-          if (fresh) {
-            set((state) => ({
-              payments: state.payments.map((item) => (item.id === id ? fresh : item)),
-            }));
-          }
-        } catch {
-          // Only a refresh; the next load fixes it.
-        }
+        await refreshOne(id);
         return 'already';
       }
       // Diagnostic, like the list failure above.
       console.error('[recurring] pay failed:', error);
+      return 'failed';
+    }
+  },
+  skip: async (id, occurrence) => {
+    try {
+      const payment = await skipOccurrence(id, occurrence);
+      set((state) => ({
+        payments: state.payments.map((item) =>
+          item.id === id ? { ...item, lastConfirmedAt: payment.lastConfirmedAt } : item,
+        ),
+      }));
+      return 'skipped';
+    } catch (error) {
+      if (error instanceof AlreadyHandledError) {
+        await refreshOne(id);
+        return 'already';
+      }
+      // Diagnostic, like the list failure above.
+      console.error('[recurring] skip failed:', error);
       return 'failed';
     }
   },

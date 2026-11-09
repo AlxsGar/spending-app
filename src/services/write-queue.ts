@@ -1,7 +1,9 @@
 // One in-process queue for every explicit write transaction.
 //
-// Users of `serialized` (all of them wrap one withTransactionAsync):
-// - payOccurrence and removeTransactionUndoing (recurring-actions.ts)
+// Users of `serialized` (most wrap one withTransactionAsync; skipOccurrence and
+// updateRecurring are single statements that decide on a value they just read):
+// - payOccurrence, skipOccurrence and removeTransactionUndoing (recurring-actions.ts)
+// - updateRecurring (recurring.ts)
 // - removeAccount (accounts.ts)
 // - migrate (db.ts) does NOT use it: it runs inside initDb() before the database
 //   is handed out, and every service awaits initDb() before it can queue

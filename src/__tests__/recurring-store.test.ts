@@ -7,7 +7,7 @@ import {
   updateRecurring,
 } from '@/services/recurring';
 import type { RecurringInput, RecurringPayment } from '@/services/recurring';
-import { AlreadyHandledError, payOccurrence } from '@/services/recurring-actions';
+import { AlreadyHandledError, payOccurrence, skipOccurrence } from '@/services/recurring-actions';
 import { useAccountsStore } from '@/stores/accounts-store';
 import { useRecurringStore } from '@/stores/recurring-store';
 import { useTransactionsStore } from '@/stores/transactions-store';
@@ -28,6 +28,7 @@ jest.mock('@/services/recurring', () => ({
 jest.mock('@/services/recurring-actions', () => ({
   ...jest.requireActual('@/services/recurring-actions'),
   payOccurrence: jest.fn(),
+  skipOccurrence: jest.fn(),
 }));
 jest.mock('@/services/accounts', () => ({
   ...jest.requireActual('@/services/accounts'),
@@ -321,6 +322,63 @@ describe('recurring store', () => {
       expect(useTransactionsStore.getState().transactions).toEqual([]);
       expect(useRecurringStore.getState().payments[0].lastConfirmedAt).toBeNull();
       expect(consoleError()).toHaveBeenCalledWith('[recurring] pay failed:', expect.any(Error));
+    });
+  });
+
+  describe('pay with an amount, and skip', () => {
+    it('pay passes the entered amount to the service', async () => {
+      useRecurringStore.setState({ payments: [make(1)], status: 'ready' });
+      (payOccurrence as jest.Mock).mockResolvedValue({
+        transaction: {
+          id: 90,
+          accountId: 3,
+          kind: 'expense',
+          amountCents: 2550,
+          date: '2026-10-15T12:00:00.000Z',
+          note: null,
+          recurringId: 1,
+          recurringOccurrence: '2026-10-15',
+          createdAt: '2026-10-15T12:00:00.000Z',
+        },
+        payment: { ...make(1), lastConfirmedAt: '2026-10-15' },
+      });
+      expect(await useRecurringStore.getState().pay(1, '2026-10-15', 3, 2550)).toBe('paid');
+      expect(payOccurrence).toHaveBeenCalledWith({
+        paymentId: 1,
+        occurrence: '2026-10-15',
+        accountId: 3,
+        amountCents: 2550,
+      });
+      // The stored payment keeps its own amount.
+      expect(useRecurringStore.getState().payments[0].amountCents).toBe(100);
+    });
+
+    it('skip confirms the occurrence in memory and adds no transaction', async () => {
+      useRecurringStore.setState({ payments: [make(1), make(2)], status: 'ready' });
+      (skipOccurrence as jest.Mock).mockResolvedValue({ ...make(1), lastConfirmedAt: '2026-10-15' });
+      expect(await useRecurringStore.getState().skip(1, '2026-10-15')).toBe('skipped');
+      expect(skipOccurrence).toHaveBeenCalledWith(1, '2026-10-15');
+      const [first, second] = useRecurringStore.getState().payments;
+      expect(first.lastConfirmedAt).toBe('2026-10-15');
+      expect(second.lastConfirmedAt).toBeNull();
+      expect(useTransactionsStore.getState().transactions).toEqual([]);
+    });
+
+    it('skip of an already handled occurrence resolves "already" and refreshes, without logging', async () => {
+      useRecurringStore.setState({ payments: [make(1)], status: 'ready' });
+      (skipOccurrence as jest.Mock).mockRejectedValue(new AlreadyHandledError(1, '2026-10-15'));
+      (getRecurring as jest.Mock).mockResolvedValue({ ...make(1), lastConfirmedAt: '2026-10-15' });
+      expect(await useRecurringStore.getState().skip(1, '2026-10-15')).toBe('already');
+      expect(useRecurringStore.getState().payments[0].lastConfirmedAt).toBe('2026-10-15');
+      expect(consoleError()).not.toHaveBeenCalled();
+    });
+
+    it('skip changes nothing and logs when the write fails', async () => {
+      useRecurringStore.setState({ payments: [make(1)], status: 'ready' });
+      (skipOccurrence as jest.Mock).mockRejectedValue(new Error('db'));
+      expect(await useRecurringStore.getState().skip(1, '2026-10-15')).toBe('failed');
+      expect(useRecurringStore.getState().payments[0].lastConfirmedAt).toBeNull();
+      expect(consoleError()).toHaveBeenCalledWith('[recurring] skip failed:', expect.any(Error));
     });
   });
 

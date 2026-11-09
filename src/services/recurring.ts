@@ -4,6 +4,7 @@ import { localDayKey } from './day-groups';
 import { parseAmountToCents } from './money';
 import type { AmountParseError } from './money';
 import { NOTE_MAX_LENGTH } from './transactions';
+import { serialized } from './write-queue';
 
 export { NAME_MAX_LENGTH, NOTE_MAX_LENGTH };
 
@@ -71,6 +72,7 @@ export type RecurringValidationCode =
   | 'invalidUnit'
   | 'invalidStartDate'
   | 'startDateInPast'
+  | 'startDateNotAfterHandled'
   | 'invalidEndDate'
   | 'endBeforeStart'
   | 'noteTooLong';
@@ -357,6 +359,62 @@ export function previousOccurrence(schedule: Schedule, occurrence: Day): Day | n
   return k < 0 ? null : rawOccurrence(schedule, k);
 }
 
+// The occurrence Pay now and Skip act on: the current one (due or overdue,
+// unpaid), else the next one, so paying or skipping early is allowed. A
+// dismissal is ignored (it only hides a card). Null for an inactive or finished
+// payment.
+export function actionOccurrence(payment: RecurringPayment, today: Day): Day | null {
+  if (!payment.active) return null;
+  const state = scheduleState(payment, today);
+  return state.kind === 'finished' ? null : state.date;
+}
+
+// True when paying or skipping `occurrence` is a valid call today: the payment
+// is active and unfinished, and the occurrence is its actionOccurrence, or (the
+// only other case) the occurrence right after it while the action occurrence's
+// card was dismissed and that next one is within the deck's 7-day window,
+// because the deck then shows it (the same rule as cardFor).
+// Anything else (already handled, beyond the next one, not an occurrence of the
+// schedule, inactive, finished) is not.
+export function canHandleOccurrence(payment: RecurringPayment, occurrence: Day, today: Day): boolean {
+  const target = actionOccurrence(payment, today);
+  if (target === null) return false;
+  if (occurrence === target) return true;
+  if (payment.dismissedAt !== target) return false;
+  // The successor card only shows within the deck window (see cardFor).
+  return (
+    occurrence === occurrenceAt(payment, latestIndexOnOrBefore(payment, target) + 1) &&
+    occurrence <= addDays(today, STACK_WINDOW_DAYS)
+  );
+}
+
+// The earliest start date the edit form offers: today, or for a payment that
+// was paid or skipped, the day after that occurrence if that is later.
+export function startDateFloor(lastConfirmedAt: Day | null, today: Day): Day {
+  if (lastConfirmedAt === null) return today;
+  const next = addDays(lastConfirmedAt, 1);
+  return next > today ? next : today;
+}
+
+// The start date to store when saving an edit.
+// - Never paid or skipped: what was entered.
+// - Paid or skipped, start date left as shown (the last handled occurrence): the
+//   schedule is kept as it is; but when the interval or unit changed, the new
+//   schedule is counted from that occurrence, so it becomes the anchor (start
+//   date) and stays handled, and the next occurrence is one new step after it.
+// - Paid or skipped, a different start date: that date (it is after the handled
+//   one, see validateRecurringInput). last_confirmed_at is not touched: it is
+//   before the new start, so the new start is the first unhandled occurrence.
+export function effectiveStartDate(
+  existing: Pick<RecurringPayment, 'interval' | 'unit' | 'startDate' | 'lastConfirmedAt'>,
+  input: { interval: number; unit: Unit; startDate: Day },
+): Day {
+  const { lastConfirmedAt } = existing;
+  if (lastConfirmedAt === null || input.startDate !== lastConfirmedAt) return input.startDate;
+  const changed = input.interval !== existing.interval || input.unit !== existing.unit;
+  return changed ? lastConfirmedAt : existing.startDate;
+}
+
 // ---- Validation ----------------------------------------------------------
 
 export function isUnit(value: string): value is Unit {
@@ -381,12 +439,17 @@ export function parseInterval(
 // - today: the local calendar day; a start date before it is rejected.
 // - originalStartDate: when editing, the stored start date. Left unchanged it
 //   stays valid even if it is in the past; a changed one must be today or later.
+// - lastConfirmedAt: when editing a payment that was paid or skipped, the last
+//   handled occurrence. The form shows it as the start date; left as it is, it
+//   stays valid (it is the anchor, see effectiveStartDate). A different one must
+//   be after it and today or later, whichever is later (startDateFloor).
 // The form and the service both call this, so they cannot disagree.
 export function validateRecurringInput(
   input: RecurringInput,
   currency: string | null,
   today: Day = toDay(new Date()),
   originalStartDate?: Day,
+  lastConfirmedAt: Day | null = null,
 ): RecurringValidationCode | null {
   const name = input.name.trim();
   if (name.length === 0) return 'nameRequired';
@@ -398,7 +461,14 @@ export function validateRecurringInput(
   if (!interval.ok) return interval.code;
   if (!isUnit(input.unit)) return 'invalidUnit';
   if (!isDay(input.startDate)) return 'invalidStartDate';
-  if (input.startDate < today && input.startDate !== originalStartDate) return 'startDateInPast';
+  if (lastConfirmedAt !== null) {
+    if (input.startDate !== lastConfirmedAt) {
+      if (input.startDate <= lastConfirmedAt) return 'startDateNotAfterHandled';
+      if (input.startDate < today) return 'startDateInPast';
+    }
+  } else if (input.startDate < today && input.startDate !== originalStartDate) {
+    return 'startDateInPast';
+  }
   if (input.endDate !== null) {
     if (!isDay(input.endDate)) return 'invalidEndDate';
     if (input.endDate < input.startDate) return 'endBeforeStart';
@@ -430,11 +500,16 @@ function toRecurring(row: RecurringRow): RecurringPayment {
 
 // Validates and parses the input against the chosen account, or against the
 // default currency when no account is chosen.
-async function parse(input: RecurringInput, today: Day, originalStartDate?: Day) {
+async function parse(
+  input: RecurringInput,
+  today: Day,
+  originalStartDate?: Day,
+  lastConfirmedAt: Day | null = null,
+) {
   const account = input.accountId === null ? null : await getAccount(input.accountId);
   if (input.accountId !== null && !account) throw new RecurringValidationError('accountNotFound');
   const currency = account ? account.currency : await getDefaultCurrency();
-  const code = validateRecurringInput(input, currency, today, originalStartDate);
+  const code = validateRecurringInput(input, currency, today, originalStartDate, lastConfirmedAt);
   if (code) throw new RecurringValidationError(code);
   const amount = parseAmountToCents(input.amount, currency);
   if (!amount.ok) throw new RecurringValidationError(AMOUNT_CODES[amount.code]);
@@ -502,19 +577,27 @@ export async function createRecurring(
 }
 
 // Changes account, name, amount, schedule, note and active. notify_days_before,
-// last_confirmed_at and created_at never change here. The next due date is
-// computed from the schedule, so changing interval, unit or start date moves it
-// and renames or amount edits do not. A start date that is unchanged may be in
-// the past; a changed one must be today or later. Throws when the payment does
-// not exist.
-export async function updateRecurring(
+// last_confirmed_at and created_at never change here, so paid and skipped
+// occurrences stay handled and their transactions are untouched. The next due
+// date is computed from the schedule, so changing interval, unit or start date
+// moves it and renames or amount edits do not. Never paid: an unchanged start
+// date may be in the past, a changed one must be today or later. Paid or
+// skipped: see effectiveStartDate and validateRecurringInput. Runs in the write
+// queue, so a pay or skip cannot change last_confirmed_at between the read and
+// the write. Throws when the payment does not exist.
+export function updateRecurring(
   id: number,
   input: RecurringInput,
   now: Date = new Date(),
 ): Promise<RecurringPayment> {
+  return serialized(() => update(id, input, now));
+}
+
+async function update(id: number, input: RecurringInput, now: Date): Promise<RecurringPayment> {
   const existing = await getRecurring(id);
   if (!existing) throw new Error(`Recurring payment ${id} not found`);
-  const parsed = await parse(input, toDay(now), existing.startDate);
+  const parsed = await parse(input, toDay(now), existing.startDate, existing.lastConfirmedAt);
+  const startDate = effectiveStartDate(existing, parsed);
   const db = await initDb();
   const result = await db.runAsync(
     'UPDATE recurring_payments SET account_id = ?, name = ?, amount_cents = ?, note = ?, interval = ?, unit = ?, start_date = ?, end_date = ?, active = ? WHERE id = ?',
@@ -524,13 +607,13 @@ export async function updateRecurring(
     parsed.note,
     parsed.interval,
     parsed.unit,
-    parsed.startDate,
+    startDate,
     parsed.endDate,
     parsed.active ? 1 : 0,
     id,
   );
   if (result.changes === 0) throw new Error(`Recurring payment ${id} not found`);
-  return { ...existing, ...parsed };
+  return { ...existing, ...parsed, startDate };
 }
 
 // Hides the card of one occurrence. Does not touch last_confirmed_at. Throws

@@ -14,16 +14,21 @@ import { getSetting, initDb, resetDbForTests } from '@/services/db';
 import { createAccount, listAccounts, removeAccount, updateAccount } from '@/services/accounts';
 import {
   createRecurring,
+  dayToDate,
   dismissRecurring,
   getRecurring,
   listRecurring,
   removeRecurring,
+  scheduleState,
   updateRecurring,
 } from '@/services/recurring';
+import * as recurringModule from '@/services/recurring';
+import type { RecurringInput } from '@/services/recurring';
 import {
   AlreadyHandledError,
   payOccurrence,
   removeTransactionUndoing,
+  skipOccurrence,
 } from '@/services/recurring-actions';
 import { createRealSqlite, seedSchema } from '@/test/real-sqlite';
 import type { RealSqlite } from '@/test/real-sqlite';
@@ -1518,7 +1523,12 @@ describe('dismiss, pay and undo through the real services', () => {
   it('deleting the expense of the FIRST occurrence sets last_confirmed_at to NULL', async () => {
     await setup();
     // Gym: weekly from Thursday 2026-01-01; pay the first occurrence.
-    const paid = await payOccurrence({ paymentId: 2, occurrence: '2026-01-01', accountId: 1, now });
+    const paid = await payOccurrence({
+      paymentId: 2,
+      occurrence: '2026-01-01',
+      accountId: 1,
+      now: new Date(2026, 0, 1, 9),
+    });
     const result = await removeTransactionUndoing(paid.transaction.id);
     expect(result).toEqual({ undone: { paymentId: 2, lastConfirmedAt: null } });
     expect((await getRecurring(2))?.lastConfirmedAt).toBeNull();
@@ -1566,5 +1576,439 @@ describe('dismiss, pay and undo through the real services', () => {
       recurring_occurrence: '2026-04-15',
     });
     expect(await getRecurring(1)).toBeNull();
+  });
+});
+
+describe('Pay now and Skip through the real services', () => {
+  const created = new Date(2026, 9, 1, 9, 0, 0);
+  const now = new Date(2026, 10, 9, 10, 30, 0);
+  const input: RecurringInput = {
+    accountId: 1,
+    name: 'Rent',
+    amount: '10.00',
+    interval: '1',
+    unit: 'month',
+    startDate: '2026-10-15',
+    endDate: null,
+    note: 'monthly',
+    active: true,
+  };
+
+  const setup = async () => {
+    await initDb();
+    insertAccounts();
+    return createRecurring(input, created);
+  };
+
+  it('Pay now with an edited amount on another account writes one expense and leaves the payment alone', async () => {
+    const payment = await setup();
+    const result = await payOccurrence({
+      paymentId: payment.id,
+      occurrence: '2026-10-15',
+      accountId: 2,
+      amountCents: 250000,
+      now,
+    });
+    const rows = allTransactions();
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      id: result.transaction.id,
+      account_id: 2,
+      kind: 'expense',
+      amount_cents: 250000,
+      note: 'monthly',
+      recurring_id: payment.id,
+      recurring_occurrence: '2026-10-15',
+    });
+    expect(await getRecurring(payment.id)).toEqual({ ...payment, lastConfirmedAt: '2026-10-15' });
+  });
+
+  it('rejects a zero or fractional amount and writes nothing', async () => {
+    const payment = await setup();
+    for (const amountCents of [0, -5, 1.5]) {
+      await expect(
+        payOccurrence({ paymentId: payment.id, occurrence: '2026-10-15', accountId: 1, amountCents, now }),
+      ).rejects.toThrow('Invalid amount');
+    }
+    expect(allTransactions()).toHaveLength(0);
+    expect((await getRecurring(payment.id))?.lastConfirmedAt).toBeNull();
+  });
+
+  it('Skip confirms the occurrence without an expense', async () => {
+    const payment = await setup();
+    const skipped = await skipOccurrence(payment.id, '2026-10-15', now);
+    expect(skipped.lastConfirmedAt).toBe('2026-10-15');
+    expect((await getRecurring(payment.id))?.lastConfirmedAt).toBe('2026-10-15');
+    expect(allTransactions()).toHaveLength(0);
+  });
+
+  it('Skip twice, or after paying, or an older occurrence, is AlreadyHandled and writes nothing', async () => {
+    const payment = await setup();
+    await skipOccurrence(payment.id, '2026-10-15', now);
+    await expect(skipOccurrence(payment.id, '2026-10-15', now)).rejects.toBeInstanceOf(AlreadyHandledError);
+    await expect(skipOccurrence(payment.id, '2026-09-15', now)).rejects.toBeInstanceOf(AlreadyHandledError);
+    await expect(
+      payOccurrence({ paymentId: payment.id, occurrence: '2026-10-15', accountId: 1, now }),
+    ).rejects.toBeInstanceOf(AlreadyHandledError);
+    expect(allTransactions()).toHaveLength(0);
+    await expect(skipOccurrence(999, '2026-10-15', now)).rejects.toThrow('not found');
+  });
+
+  it('two overlapping Skips write once', async () => {
+    const payment = await setup();
+    const results = await Promise.allSettled([
+      skipOccurrence(payment.id, '2026-10-15', now),
+      skipOccurrence(payment.id, '2026-10-15', now),
+    ]);
+    expect(results.map((item) => item.status).sort()).toEqual(['fulfilled', 'rejected']);
+  });
+
+  it('Skip then Pay of the next occurrence works, paying early included', async () => {
+    const payment = await setup();
+    await skipOccurrence(payment.id, '2026-10-15', now);
+    await payOccurrence({ paymentId: payment.id, occurrence: '2026-11-15', accountId: 1, now });
+    expect((await getRecurring(payment.id))?.lastConfirmedAt).toBe('2026-11-15');
+    expect(allTransactions()).toHaveLength(1);
+  });
+});
+
+describe('pay and skip only act on the occurrence the payment is waiting on (real SQLite)', () => {
+  const now = new Date(2026, 10, 9, 10, 30, 0);
+  const base: RecurringInput = {
+    accountId: 1,
+    name: 'Rent',
+    amount: '10.00',
+    interval: '1',
+    unit: 'month',
+    startDate: '2026-10-15',
+    endDate: null,
+    note: '',
+    active: true,
+  };
+  const create = async (extra: Partial<RecurringInput> = {}, at = new Date(2026, 9, 1)) => {
+    await initDb();
+    insertAccounts();
+    return (await createRecurring({ ...base, ...extra }, at)).id;
+  };
+  const pay = (id: number, occurrence: string) =>
+    payOccurrence({ paymentId: id, occurrence, accountId: 1, now });
+  const skip = (id: number, occurrence: string) => skipOccurrence(id, occurrence, now);
+  const untouched = async (id: number, last: string | null = null) => {
+    expect(allTransactions()).toHaveLength(0);
+    expect((await getRecurring(id))?.lastConfirmedAt).toBe(last);
+  };
+
+  it.each([
+    ['a past occurrence', '2026-09-15'],
+    ['a future one beyond the current', '2026-11-15'],
+    ['a far future one', '2026-12-15'],
+    ['a day that is not an occurrence', '2026-10-16'],
+  ])('rejects %s for pay (quick Paid too) and skip, writing nothing', async (_name, day) => {
+    const id = await create();
+    await expect(pay(id, day)).rejects.toBeInstanceOf(AlreadyHandledError);
+    await expect(skip(id, day)).rejects.toBeInstanceOf(AlreadyHandledError);
+    await untouched(id);
+  });
+
+  it('accepts the current occurrence, then only the next one', async () => {
+    const id = await create();
+    await expect(pay(id, '2026-10-15')).resolves.toBeDefined();
+    await expect(pay(id, '2026-12-15')).rejects.toBeInstanceOf(AlreadyHandledError);
+    await expect(skip(id, '2026-12-15')).rejects.toBeInstanceOf(AlreadyHandledError);
+    await expect(skip(id, '2026-11-15')).resolves.toBeDefined();
+    expect((await getRecurring(id))?.lastConfirmedAt).toBe('2026-11-15');
+  });
+
+  it('accepts the next occurrence (early) when none is due yet, and nothing after it', async () => {
+    const id = await create({ startDate: '2026-12-01' });
+    await expect(pay(id, '2027-01-01')).rejects.toBeInstanceOf(AlreadyHandledError);
+    await expect(skip(id, '2026-11-01')).rejects.toBeInstanceOf(AlreadyHandledError);
+    await expect(pay(id, '2026-12-01')).resolves.toBeDefined();
+  });
+
+  it('rejects an inactive payment, even for its current occurrence', async () => {
+    const id = await create({ active: false });
+    await expect(pay(id, '2026-10-15')).rejects.toBeInstanceOf(AlreadyHandledError);
+    await expect(skip(id, '2026-10-15')).rejects.toBeInstanceOf(AlreadyHandledError);
+    await untouched(id);
+  });
+
+  it('rejects a finished payment', async () => {
+    const id = await create({ endDate: '2026-10-20' });
+    await skip(id, '2026-10-15');
+    for (const day of ['2026-10-15', '2026-11-15']) {
+      await expect(pay(id, day)).rejects.toBeInstanceOf(AlreadyHandledError);
+      await expect(skip(id, day)).rejects.toBeInstanceOf(AlreadyHandledError);
+    }
+    expect(allTransactions()).toHaveLength(0);
+  });
+
+  it('judges the schedule as it is now: an occurrence from before an edit is rejected', async () => {
+    const id = await create();
+    // A screen opened for Oct 15, then the schedule was edited to start Dec 1.
+    await updateRecurring(id, { ...base, startDate: '2026-12-01' }, now);
+    await expect(pay(id, '2026-10-15')).rejects.toBeInstanceOf(AlreadyHandledError);
+    await untouched(id);
+  });
+
+  describe('with a dismissed card', () => {
+    // Weekly from Mon Nov 2; today Nov 9: the current occurrence is Nov 9.
+    const weekly = async () => {
+      const id = await create(
+        { unit: 'week', startDate: '2026-11-02' },
+        new Date(2026, 10, 2),
+      );
+      await dismissRecurring(id, '2026-11-09');
+      return id;
+    };
+
+    it('ignores the dismissal for the current occurrence', async () => {
+      const id = await weekly();
+      await expect(skip(id, '2026-11-09')).resolves.toBeDefined();
+    });
+
+    it('also accepts the occurrence the deck shows after the dismissed one (quick Paid on that card), no further', async () => {
+      const id = await weekly();
+      await expect(pay(id, '2026-11-23')).rejects.toBeInstanceOf(AlreadyHandledError);
+      await expect(pay(id, '2026-11-16')).resolves.toBeDefined();
+      expect((await getRecurring(id))?.lastConfirmedAt).toBe('2026-11-16');
+    });
+
+    it('the successor is accepted on the last day of the 7-day window (today + 7) and rejected beyond it', async () => {
+      // Weekly: successor Nov 16 = today (Nov 9) + 7, inside.
+      const inside = await weekly();
+      await expect(skip(inside, '2026-11-16')).resolves.toBeDefined();
+    });
+
+    it('rejects a successor beyond the window', async () => {
+      // Monthly from Nov 1, dismissed: the successor Dec 1 is 22 days away, so
+      // the deck does not show it and it cannot be paid or skipped.
+      const id = await create({ startDate: '2026-11-01' }, new Date(2026, 10, 1));
+      await dismissRecurring(id, '2026-11-01');
+      await expect(pay(id, '2026-12-01')).rejects.toBeInstanceOf(AlreadyHandledError);
+      await expect(skip(id, '2026-12-01')).rejects.toBeInstanceOf(AlreadyHandledError);
+      await untouched(id);
+      // The dismissed current occurrence itself is still fine.
+      await expect(pay(id, '2026-11-01')).resolves.toBeDefined();
+    });
+  });
+
+  describe('the conditional UPDATE guard, behind the pre-check', () => {
+    // The pre-check normally rejects first. To prove the UPDATE alone still
+    // refuses a handled occurrence (a change that slipped in after the re-read),
+    // the pre-check is forced to say yes for the call; no production hook needed.
+    afterEach(() => jest.restoreAllMocks());
+
+    it('pay: an occurrence already confirmed is rejected by the UPDATE and no expense is written', async () => {
+      const id = await create();
+      await skip(id, '2026-10-15');
+      jest.spyOn(recurringModule, 'canHandleOccurrence').mockReturnValue(true);
+      await expect(pay(id, '2026-10-15')).rejects.toBeInstanceOf(AlreadyHandledError);
+      expect(recurringModule.canHandleOccurrence).toHaveBeenCalled();
+      await untouched(id, '2026-10-15');
+    });
+
+    it('skip: the same, and the confirmation is unchanged', async () => {
+      const id = await create();
+      await skip(id, '2026-10-15');
+      await skip(id, '2026-11-15');
+      jest.spyOn(recurringModule, 'canHandleOccurrence').mockReturnValue(true);
+      await expect(skip(id, '2026-10-15')).rejects.toBeInstanceOf(AlreadyHandledError);
+      await expect(skip(id, '2026-11-15')).rejects.toBeInstanceOf(AlreadyHandledError);
+      await untouched(id, '2026-11-15');
+    });
+  });
+
+  it('the paid-today prompt: a new active payment starting today can be paid for today', async () => {
+    const id = await create({ startDate: '2026-11-09' }, now);
+    await expect(pay(id, '2026-11-09')).resolves.toBeDefined();
+    expect(allTransactions()).toHaveLength(1);
+  });
+});
+
+describe('editing after a payment was paid or skipped (real SQLite)', () => {
+  const created = new Date(2026, 9, 1, 9, 0, 0);
+  // Today is Nov 9. The payment is monthly from Oct 15 and Oct 15 was handled.
+  const now = new Date(2026, 10, 9, 10, 30, 0);
+  const today = '2026-11-09';
+  const base: RecurringInput = {
+    accountId: 1,
+    name: 'Rent',
+    amount: '10.00',
+    interval: '1',
+    unit: 'month',
+    startDate: '2026-10-15',
+    endDate: null,
+    note: '',
+    active: true,
+  };
+
+  const setup = async (how: 'paid' | 'skipped', startDate = '2026-10-15') => {
+    await initDb();
+    insertAccounts();
+    // Created on the start date itself, so a past start date is allowed.
+    const at = dayToDate(startDate);
+    const payment = await createRecurring({ ...base, startDate }, at);
+    if (how === 'paid') {
+      await payOccurrence({ paymentId: payment.id, occurrence: startDate, accountId: 1, now: at });
+    } else {
+      await skipOccurrence(payment.id, startDate, at);
+    }
+    return payment.id;
+  };
+  const next = async (id: number, day = today) => scheduleState((await getRecurring(id))!, day);
+  const edit = (id: number, extra: Partial<RecurringInput>) =>
+    updateRecurring(id, { ...base, ...extra }, now);
+  const expectCode = async (promise: Promise<unknown>, code: string) =>
+    expect(await promise.then(() => null, (error: { code?: string }) => error.code)).toBe(code);
+
+  it.each(['paid', 'skipped'] as const)(
+    'renames and amount edits (%s) move nothing: handled occurrence, start date and expenses stay',
+    async (how) => {
+      const id = await setup(how);
+      const before = allTransactions();
+      // Account 2 is in yen: no decimals.
+      await edit(id, { name: 'Flat', amount: '99', note: 'x', accountId: 2 });
+      expect(await getRecurring(id)).toMatchObject({
+        name: 'Flat',
+        amountCents: 9900,
+        startDate: '2026-10-15',
+        lastConfirmedAt: '2026-10-15',
+      });
+      expect(allTransactions()).toEqual(before);
+      expect(await next(id)).toEqual({ kind: 'upcoming', date: '2026-11-15' });
+    },
+  );
+
+  it('leaving the schedule alone keeps the stored anchor (a clamped month does not drift)', async () => {
+    // Monthly from Jan 31; Feb 28 was handled. A rename must not re-anchor to
+    // Feb 28 (that would make the next one Mar 28 instead of Mar 31).
+    const id = await setup('paid', '2026-01-31');
+    await expect(skipOccurrence(id, '2026-02-28', new Date(2026, 1, 28))).resolves.toBeDefined();
+    await updateRecurring(id, { ...base, startDate: '2026-02-28', name: 'Flat' }, new Date(2026, 2, 1));
+    expect(await getRecurring(id)).toMatchObject({ startDate: '2026-01-31', lastConfirmedAt: '2026-02-28' });
+    expect(await next(id, '2026-03-01')).toEqual({ kind: 'upcoming', date: '2026-03-31' });
+  });
+
+  it.each(['paid', 'skipped'] as const)(
+    'changing the interval (%s) counts from the handled occurrence, which stays handled',
+    async (how) => {
+      const id = await setup(how);
+      await edit(id, { interval: '2' });
+      expect(await getRecurring(id)).toMatchObject({
+        interval: 2,
+        startDate: '2026-10-15',
+        lastConfirmedAt: '2026-10-15',
+      });
+      // Anchor + one new step.
+      expect(await next(id, '2026-10-16')).toEqual({ kind: 'upcoming', date: '2026-12-15' });
+      expect(await next(id)).toEqual({ kind: 'upcoming', date: '2026-12-15' });
+    },
+  );
+
+  it.each(['paid', 'skipped'] as const)(
+    'changing the unit (%s) counts from the handled occurrence',
+    async (how) => {
+      const id = await setup(how);
+      await edit(id, { unit: 'week' });
+      expect(await getRecurring(id)).toMatchObject({
+        unit: 'week',
+        startDate: '2026-10-15',
+        lastConfirmedAt: '2026-10-15',
+      });
+      expect(await next(id, '2026-10-16')).toEqual({ kind: 'upcoming', date: '2026-10-22' });
+    },
+  );
+
+  it('re-anchors from a handled occurrence that is not the stored start date', async () => {
+    const id = await setup('paid');
+    await payOccurrence({ paymentId: id, occurrence: '2026-11-15', accountId: 1, now });
+    await edit(id, { startDate: '2026-11-15', interval: '3' });
+    expect(await getRecurring(id)).toMatchObject({ startDate: '2026-11-15', lastConfirmedAt: '2026-11-15' });
+    expect(await next(id)).toEqual({ kind: 'upcoming', date: '2027-02-15' });
+  });
+
+  it('a new start date after the handled one and today or later becomes the anchor; nothing is handled by it', async () => {
+    const id = await setup('paid');
+    await edit(id, { startDate: '2026-12-01' });
+    expect(await getRecurring(id)).toMatchObject({ startDate: '2026-12-01', lastConfirmedAt: '2026-10-15' });
+    expect(await next(id)).toEqual({ kind: 'upcoming', date: '2026-12-01' });
+    // Today itself is allowed, and is then due.
+    await edit(id, { startDate: today });
+    expect(await next(id)).toEqual({ kind: 'current', date: today });
+  });
+
+  it('a new start date on or before the handled one, or in the past, is rejected and nothing changes', async () => {
+    const id = await setup('skipped');
+    const stored = await getRecurring(id);
+    await expectCode(edit(id, { startDate: '2026-10-10' }), 'startDateNotAfterHandled');
+    await expectCode(edit(id, { startDate: '2026-10-14' }), 'startDateNotAfterHandled');
+    // After the handled one but before today.
+    await expectCode(edit(id, { startDate: '2026-10-16' }), 'startDateInPast');
+    await expectCode(edit(id, { startDate: '2026-11-08' }), 'startDateInPast');
+    expect(await getRecurring(id)).toEqual(stored);
+  });
+
+  it('an end date before the new anchor is rejected, also when only the interval changed', async () => {
+    const id = await setup('paid');
+    const stored = await getRecurring(id);
+    await expectCode(edit(id, { interval: '2', endDate: '2026-10-01' }), 'endBeforeStart');
+    await expectCode(edit(id, { startDate: '2026-12-01', endDate: '2026-11-30' }), 'endBeforeStart');
+    expect(await getRecurring(id)).toEqual(stored);
+    // On the anchor itself is fine (the payment is then finished).
+    await edit(id, { interval: '2', endDate: '2026-10-15' });
+    expect(await next(id)).toEqual({ kind: 'finished' });
+  });
+
+  it('never-paid payments keep the old rules', async () => {
+    await initDb();
+    insertAccounts();
+    const payment = await createRecurring(base, created);
+    await edit(payment.id, { name: 'Flat' });
+    expect((await getRecurring(payment.id))?.startDate).toBe('2026-10-15');
+    await expectCode(edit(payment.id, { startDate: '2026-10-16' }), 'startDateInPast');
+    await edit(payment.id, { startDate: '2026-11-20', interval: '2' });
+    expect(await getRecurring(payment.id)).toMatchObject({ startDate: '2026-11-20', lastConfirmedAt: null });
+  });
+
+  describe('undo after a re-anchor', () => {
+    const lastConfirmed = async (id: number) => (await getRecurring(id))?.lastConfirmedAt;
+
+    it('deleting the expense of the anchor makes the anchor unpaid again (never earlier than it)', async () => {
+      const id = await setup('paid');
+      const txId = allTransactions()[0].id;
+      await edit(id, { interval: '2' });
+      expect(await removeTransactionUndoing(txId)).toEqual({ undone: { paymentId: id, lastConfirmedAt: null } });
+      expect(await lastConfirmed(id)).toBeNull();
+      // The anchor is the first occurrence of the new schedule, due again.
+      expect(await next(id)).toEqual({ kind: 'current', date: '2026-10-15' });
+    });
+
+    it('an occurrence paid after the re-anchor undoes back to the anchor', async () => {
+      const id = await setup('paid');
+      await edit(id, { interval: '2' });
+      const paid = await payOccurrence({ paymentId: id, occurrence: '2026-12-15', accountId: 1, now });
+      expect(await removeTransactionUndoing(paid.transaction.id)).toEqual({
+        undone: { paymentId: id, lastConfirmedAt: '2026-10-15' },
+      });
+      expect(await lastConfirmed(id)).toBe('2026-10-15');
+    });
+
+    it('after a start date change, deleting the old expense clears the confirmation and the new start stays next', async () => {
+      const id = await setup('paid');
+      const txId = allTransactions()[0].id;
+      await edit(id, { startDate: '2026-12-01' });
+      expect(await removeTransactionUndoing(txId)).toEqual({ undone: { paymentId: id, lastConfirmedAt: null } });
+      expect(await next(id)).toEqual({ kind: 'upcoming', date: '2026-12-01' });
+    });
+
+    it('deleting the expense of an older, handled-before occurrence changes nothing', async () => {
+      const id = await setup('paid');
+      const older = allTransactions()[0].id;
+      await edit(id, { interval: '2' });
+      await skipOccurrence(id, '2026-12-15', now);
+      expect(await removeTransactionUndoing(older)).toEqual({ undone: null });
+      expect(await lastConfirmed(id)).toBe('2026-12-15');
+    });
   });
 });

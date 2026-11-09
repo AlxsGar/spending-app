@@ -16,6 +16,10 @@ type Props = {
   defaultCurrency: string;
   // Called with the payment id when a row is tapped.
   onOpen: (id: number) => void;
+  // When given, each row gets a ⋮ menu (Pay now, Skip, Edit); Edit is onOpen.
+  // Account detail leaves it out: its rows only open the edit form.
+  onPay?: (id: number) => void;
+  onSkip?: (id: number) => void;
   // The header is left out on the Recurring payments screen, whose title says it.
   hideHeader?: boolean;
 };
@@ -29,6 +33,8 @@ export function RecurringSection({
   accounts,
   defaultCurrency,
   onOpen,
+  onPay,
+  onSkip,
   hideHeader,
 }: Props) {
   const { t } = useTranslation();
@@ -58,6 +64,15 @@ export function RecurringSection({
           account={payment.accountId === null ? null : (known.get(payment.accountId) ?? null)}
           defaultCurrency={defaultCurrency}
           onPress={() => onOpen(payment.id)}
+          actions={
+            onPay && onSkip
+              ? {
+                  onPay: () => onPay(payment.id),
+                  onSkip: () => onSkip(payment.id),
+                  onEdit: () => onOpen(payment.id),
+                }
+              : undefined
+          }
         />
       ))}
     </View>

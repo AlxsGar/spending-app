@@ -22,6 +22,7 @@ import {
   isOnceOnly,
   isUnit,
   parseInterval,
+  startDateFloor,
   toDay,
   validateRecurringInput,
 } from '@/services/recurring';
@@ -45,6 +46,9 @@ type Props = {
     note: string;
     active: boolean;
   };
+  // Editing a payment that was paid or skipped: its last handled occurrence.
+  // `initial.startDate` is then that day, and the schedule counts from it.
+  lastConfirmedAt?: Day | null;
   // Extra content under the save button (the edit screen's delete action).
   children?: ReactNode;
   // Resolves true when the payment was saved.
@@ -65,6 +69,7 @@ export function RecurringForm({
   initialAccountId,
   defaultCurrency,
   initial,
+  lastConfirmedAt = null,
   children,
   onSubmit,
 }: Props) {
@@ -105,6 +110,7 @@ export function RecurringForm({
       currency,
       toDay(new Date()),
       initial?.startDate,
+      lastConfirmedAt,
     );
 
   // Errors appear after the first save attempt, then follow the input.
@@ -142,9 +148,11 @@ export function RecurringForm({
     value === toDay(new Date())
       ? t('transactions.today')
       : formatLongDate(dayToDate(value), i18n.language);
-  // The picker never offers a past day. An original past start date stays only
-  // while it is left unchanged (the field keeps showing it).
-  const todayStart = dayToDate(toDay(new Date()));
+  // The picker never offers a past day, nor one on or before the last handled
+  // occurrence. An original past start date (or the handled occurrence) stays
+  // only while it is left unchanged (the field keeps showing it).
+  const startFloor = dayToDate(startDateFloor(lastConfirmedAt, toDay(new Date())));
+  const startErrors = ['invalidStartDate', 'startDateInPast', 'startDateNotAfterHandled'];
   const onceOnly =
     endDate !== null &&
     parsedInterval.ok &&
@@ -216,11 +224,12 @@ export function RecurringForm({
           accessibilityLabel={t('recurring.startDateLabel')}
           displayValue={dayText(startDate)}
           allowFuture
-          minimumDate={todayStart}
+          minimumDate={startFloor}
         />
-        {errorFor(['invalidStartDate', 'startDateInPast']) ? (
-          <AppText color="alert">{errorFor(['invalidStartDate', 'startDateInPast'])}</AppText>
+        {lastConfirmedAt !== null ? (
+          <AppText color="textSecondary">{t('recurring.startDateHandledHint')}</AppText>
         ) : null}
+        {errorFor(startErrors) ? <AppText color="alert">{errorFor(startErrors)}</AppText> : null}
       </View>
       <View style={styles.section}>
         <AppText variant="bodyStrong">{t('recurring.endDateLabel')}</AppText>

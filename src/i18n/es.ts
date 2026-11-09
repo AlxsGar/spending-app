@@ -179,6 +179,7 @@ export const es: Translations = {
     ends: 'Termina el {{date}}',
     finished: 'Finalizado',
     startDateLabel: 'Fecha de inicio',
+    startDateHandledHint: 'El calendario cuenta desde el último pago pagado u omitido.',
     endDateLabel: 'Fecha de fin (opcional)',
     noEndDate: 'Sin fecha de fin',
     clearEndDate: 'Quitar fecha de fin',
@@ -223,6 +224,29 @@ export const es: Translations = {
       loadError: 'No se pudieron cargar los pagos recurrentes.',
       dismissError: 'No se pudo descartar el pago. Inténtalo de nuevo.',
     },
+    // El menú ⋮ de cada fila de la pantalla de pagos recurrentes.
+    menu: {
+      label: 'Acciones de {{name}}',
+      pay: 'Pagar {{date}}',
+      skip: 'Omitir {{date}}',
+      edit: 'Editar',
+    },
+    skip: {
+      title: '¿Omitir {{date}}?',
+      message:
+        'Esto marca {{name}} como atendido en esa fecha sin registrar un pago. No se puede deshacer.',
+      confirm: 'Omitir',
+      done: 'Pago omitido',
+      error: 'No se pudo omitir el pago. Inténtalo de nuevo.',
+    },
+    // La pantalla Pagar ahora.
+    payNow: {
+      title: 'Pagar {{date}}',
+      titleDefault: 'Pagar ahora',
+      occurrence: 'Vence {{date}}',
+      save: 'Registrar pago',
+      nothingToPay: 'Ya no queda nada por pagar en este pago recurrente.',
+    },
     pay: {
       recorded: 'Pago registrado',
       error: 'No se pudo registrar el pago. Inténtalo de nuevo.',
@@ -248,6 +272,8 @@ export const es: Translations = {
       invalidUnit: 'Elige día, semana, mes o año.',
       invalidStartDate: 'Elige una fecha de inicio válida.',
       startDateInPast: 'La fecha de inicio no puede ser pasada.',
+      startDateNotAfterHandled:
+        'La fecha de inicio debe ser posterior al último pago pagado u omitido.',
       invalidEndDate: 'Elige una fecha de fin válida.',
       endBeforeStart: 'La fecha de fin no puede ser anterior al inicio.',
       noteTooLong: 'La nota puede tener como máximo 140 caracteres.',

@@ -113,7 +113,10 @@ describe('account detail recurring payments', () => {
     expect(screen.getByText('€1,500.00')).toBeTruthy();
     expect(screen.getByText('Gym')).toBeTruthy();
     expect(screen.getByText(/Every month · Inactive/)).toBeTruthy();
-    expect(screen.getByText(/Every month · next /)).toBeTruthy();
+    // Rent started in the past and was never paid: overdue, in its own line.
+    expect(screen.getByText(/Overdue · /)).toBeTruthy();
+    // Account detail rows have no ⋮ menu: they only open the edit form.
+    expect(screen.queryByLabelText(en.recurring.menu.label.replace('{{name}}', 'Rent'))).toBeNull();
     expect(screen.queryByText('Other account')).toBeNull();
   });
 

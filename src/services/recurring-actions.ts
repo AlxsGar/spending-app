@@ -2,7 +2,7 @@ import { getAccount } from './accounts';
 import { initDb } from './db';
 import { composeTransactionDate } from './transactions';
 import type { Transaction } from './transactions';
-import { getRecurring, previousOccurrence } from './recurring';
+import { canHandleOccurrence, getRecurring, previousOccurrence, toDay } from './recurring';
 import type { Day, RecurringPayment } from './recurring';
 import { serialized } from './write-queue';
 
@@ -22,6 +22,19 @@ export class AlreadyHandledError extends Error {
   }
 }
 
+// Pay and skip only act on a payment that is active and unfinished, and on the
+// occurrence it is waiting on (see canHandleOccurrence), judged on the payment as
+// it is now, inside the queued write. Otherwise the screen or card that asked is
+// stale (handled elsewhere, schedule edited, payment switched off) or the call
+// is invalid; both throw AlreadyHandledError, so the store answers 'already':
+// nothing is written, the UI closes without a success card and the payment is
+// refreshed. The conditional UPDATE below stays as the last guard.
+function assertHandleable(payment: RecurringPayment, occurrence: Day, now: Date): void {
+  if (!canHandleOccurrence(payment, occurrence, toDay(now))) {
+    throw new AlreadyHandledError(payment.id, occurrence);
+  }
+}
+
 export type PayOptions = {
   paymentId: number;
   // The occurrence being paid (a calendar day).
@@ -29,6 +42,9 @@ export type PayOptions = {
   // The account the expense goes on: the payment's own, or the one chosen when
   // the payment has none.
   accountId: number;
+  // Pay now: the amount entered, in integer cents. Default: the payment's
+  // stored amount. The payment itself never changes.
+  amountCents?: number;
   now?: Date;
 };
 
@@ -37,9 +53,9 @@ export type PayResult = {
   payment: RecurringPayment;
 };
 
-// Quick Paid: creates one expense linked to the payment and sets
-// last_confirmed_at to the occurrence. The expense has the payment's stored
-// amount in cents, today's date (same timestamp rule as a new transaction: the
+// Quick Paid and Pay now: creates one expense linked to the payment and sets
+// last_confirmed_at to the occurrence. The expense has the entered amount in
+// cents (Pay now) or the payment's stored amount (quick Paid), today's date (same timestamp rule as a new transaction: the
 // local day plus the current time of day), the payment's note as it is (may be
 // empty), recurring_id and recurring_occurrence. Paying from an account in
 // another currency relabels: the cents are not converted. Paying an occurrence
@@ -55,12 +71,18 @@ async function pay({
   paymentId,
   occurrence,
   accountId,
+  amountCents,
   now = new Date(),
 }: PayOptions): Promise<PayResult> {
   const payment = await getRecurring(paymentId);
   if (!payment) throw new Error(`Recurring payment ${paymentId} not found`);
+  const cents = amountCents ?? payment.amountCents;
+  if (!Number.isSafeInteger(cents) || cents <= 0) {
+    throw new Error(`Invalid amount ${cents} for recurring payment ${paymentId}`);
+  }
   const account = await getAccount(accountId);
   if (!account) throw new Error(`Account ${accountId} not found`);
+  assertHandleable(payment, occurrence, now);
 
   // Today's local day at the current time of day: exactly `now`.
   const date = composeTransactionDate(
@@ -81,7 +103,7 @@ async function pay({
     const result = await db.runAsync(
       "INSERT INTO transactions (account_id, kind, amount_cents, date, note, recurring_id, recurring_occurrence, created_at) VALUES (?, 'expense', ?, ?, ?, ?, ?, ?)",
       account.id,
-      payment.amountCents,
+      cents,
       date,
       payment.note,
       payment.id,
@@ -96,7 +118,7 @@ async function pay({
       id,
       accountId: account.id,
       kind: 'expense',
-      amountCents: payment.amountCents,
+      amountCents: cents,
       date,
       note: payment.note,
       recurringId: payment.id,
@@ -105,6 +127,34 @@ async function pay({
     },
     payment: { ...payment, lastConfirmedAt: occurrence },
   };
+}
+
+// Skip: marks the occurrence handled (last_confirmed_at = occurrence) without
+// creating a transaction. Like paying, it is a conditional UPDATE through the
+// write queue: an occurrence that was already paid or skipped (a double tap, a
+// stale row) throws AlreadyHandledError and writes nothing. Skipping one that is
+// not due yet is allowed. Cannot be undone.
+export function skipOccurrence(
+  paymentId: number,
+  occurrence: Day,
+  now: Date = new Date(),
+): Promise<RecurringPayment> {
+  return serialized(() => skip(paymentId, occurrence, now));
+}
+
+async function skip(paymentId: number, occurrence: Day, now: Date): Promise<RecurringPayment> {
+  const payment = await getRecurring(paymentId);
+  if (!payment) throw new Error(`Recurring payment ${paymentId} not found`);
+  assertHandleable(payment, occurrence, now);
+  const db = await initDb();
+  const update = await db.runAsync(
+    'UPDATE recurring_payments SET last_confirmed_at = ? WHERE id = ? AND (last_confirmed_at IS NULL OR last_confirmed_at < ?)',
+    occurrence,
+    paymentId,
+    occurrence,
+  );
+  if (update.changes === 0) throw new AlreadyHandledError(paymentId, occurrence);
+  return { ...payment, lastConfirmedAt: occurrence };
 }
 
 export type RemoveResult = {

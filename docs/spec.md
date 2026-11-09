@@ -119,10 +119,11 @@ Occurrence rules:
 - Finished: the last occurrence has passed and been paid or skipped.
 - Editing, never paid: changing interval, unit or start date recomputes the
   next due date. Renames and amount edits never move it.
-- Editing, once paid: future occurrences follow the new schedule counted
-  from the last paid occurrence, and the start date field shows that date;
-  a changed start date must be after the last paid occurrence and becomes
-  the new anchor. Paid occurrences are untouched.
+- Editing, once paid or skipped: future occurrences follow the new schedule
+  counted from the last paid or skipped occurrence, and the start date field
+  shows that date; a changed start date must be after that occurrence and
+  today or later, whichever is later, and becomes the new anchor. Paid and
+  skipped occurrences are untouched.
 
 Rows show "Every 2 weeks · next Oct 28" or "Every month · next Nov 1", plus
 "Ends Dec 31" when an end date is set.
@@ -138,8 +139,14 @@ account goes on the created expense; the payment's own account does not
 change. Paying from an account in another currency relabels the amount, as
 with any currency change; nothing is converted and no warning is shown;
 the amount shows in the paying account's currency. *Skip* marks the
-current occurrence as handled without creating a transaction. Pay now and
-Skip live on the Recurring payments screen.
+current occurrence as handled without creating a transaction; it asks for
+confirmation first and cannot be undone, and shows "Payment skipped" with
+the name. Pay now (a full screen) and Skip live on the Recurring payments
+screen, in each row's ⋮ menu (Pay now, Skip, Edit); both act on the current
+occurrence, or the next one if there is none (early is allowed). Rows: an
+overdue one shows "Overdue · date" in `alert` with an icon, a due-today one
+shows "Due today" in `accentSecondary`, others are plain; finished ones are
+greyed, listed last, and have no Pay now or Skip.
 
 Quick *Paid* (from a card, or "Yes" on the paid-today prompt) uses the
 stored amount, today's date and the payment's account; it asks for an
