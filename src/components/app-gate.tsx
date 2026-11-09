@@ -2,6 +2,8 @@ import { Stack } from 'expo-router';
 import { useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 
+import { CapSnackbarHost } from '@/components/cap-snackbar-host';
+import { CapsDialogHost } from '@/components/caps-exceeded-dialog';
 import { NotificationHost } from '@/components/notification-host';
 import { ErrorState, LoadingState, Screen, SuccessHost } from '@/components/ui';
 import { useLanguageStore } from '@/stores/language-store';
@@ -44,6 +46,8 @@ export function AppGate() {
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
       </Stack>
       <SuccessHost />
+      <CapSnackbarHost />
+      <CapsDialogHost />
       <NotificationHost />
     </>
   );

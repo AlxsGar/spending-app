@@ -9,6 +9,7 @@ import type { DialogAction } from '@/components/ui';
 import { createOnce } from '@/components/ui/once';
 import type { Account } from '@/services/accounts';
 import type { Day, RecurringPayment } from '@/services/recurring';
+import { beginCapWatch, finishCapWatch } from '@/stores/cap-crossing';
 import { useRecurringStore } from '@/stores/recurring-store';
 import { showSuccess } from '@/stores/success-store';
 import { spacing } from '@/theme';
@@ -68,6 +69,7 @@ export function RecurringPayDialog({
     if (!inFlight.tryStart()) return;
     setBusy(true);
     setError(null);
+    const watch = beginCapWatch();
     const outcome = await pay(payment.id, occurrence, accountId);
     if (outcome === 'failed') {
       inFlight.reset();
@@ -85,6 +87,7 @@ export function RecurringPayDialog({
     }
     // The dialog closes first, then the card shows over the screen below it.
     onDone('paid');
+    finishCapWatch(watch);
     showSuccess({
       icon: 'arrow-down',
       tone: 'negative',

@@ -240,7 +240,10 @@ Rules:
     closes. It is a single snackbar however many caps the save crossed: it
     names the cap furthest over (the same headline rule as the Home banner)
     and the amount over, adds "and N more" when several were crossed, and has
-    a View action that opens the "Caps exceeded" dialog. A backdated expense
+    a View action that opens the "Caps exceeded" dialog. A newer save that
+    crosses a cap replaces a snackbar still waiting to show; one that
+    crosses nothing leaves it. When it is due to show, it is dropped if its
+    cap is no longer exceeded. A backdated expense
     in an earlier period, a save while already over, income, deletes, undo,
     and changes to caps or account settings show none.
 

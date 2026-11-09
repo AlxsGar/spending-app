@@ -6,6 +6,7 @@ import HomeScreen from '@/app/(tabs)/index';
 import MovementsScreen from '@/app/(tabs)/movements';
 import SettingsScreen from '@/app/(tabs)/settings';
 import i18n from '@/i18n';
+import { CapsDialogHost } from '@/components/caps-exceeded-dialog';
 import { en } from '@/i18n/en';
 import { getDefaultCurrency, listAccounts } from '@/services/accounts';
 import { formatMoney } from '@/services/money';
@@ -14,6 +15,7 @@ import { dayToDate, listRecurring, toDay } from '@/services/recurring';
 import type { RecurringPayment } from '@/services/recurring';
 import { listTransactions } from '@/services/transactions';
 import { useAccountsStore } from '@/stores/accounts-store';
+import { useCapsDialogStore } from '@/stores/caps-dialog-store';
 import { useCapsStore } from '@/stores/caps-store';
 import { useRecurringStore } from '@/stores/recurring-store';
 import { useTransactionsStore } from '@/stores/transactions-store';
@@ -498,7 +500,13 @@ describe('spending caps on Home and Settings', () => {
     (listAccounts as jest.Mock).mockResolvedValue(accounts);
     (listTransactions as jest.Mock).mockResolvedValue(transactions);
     (listCaps as jest.Mock).mockResolvedValue(caps);
-    await renderWithProviders(<HomeScreen />);
+    // The dialog the banner opens is mounted once at the root in the app.
+    await renderWithProviders(
+      <>
+        <HomeScreen />
+        <CapsDialogHost />
+      </>,
+    );
     // Everything the banner reads is in, so "no banner" below is a real result.
     await waitFor(() => {
       expect(useCapsStore.getState().status).toBe('ready');
@@ -520,6 +528,7 @@ describe('spending caps on Home and Settings', () => {
     useTransactionsStore.setState({ transactions: [], status: 'idle' });
     useRecurringStore.setState({ payments: [], status: 'idle' });
     useCapsStore.setState({ caps: [], status: 'idle', saveError: false });
+    useCapsDialogStore.setState({ open: false });
   });
 
   describe('Home banner', () => {

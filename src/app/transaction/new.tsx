@@ -5,6 +5,7 @@ import { TransactionForm } from '@/components/transaction-form';
 import { EmptyState, ErrorState, LoadingState, Screen } from '@/components/ui';
 import { formatSignedMoney, parseAmountToCents } from '@/services/money';
 import { useAccounts } from '@/stores/accounts-store';
+import { beginCapWatch, finishCapWatch } from '@/stores/cap-crossing';
 import { showSuccess } from '@/stores/success-store';
 import { useTransactionsStore } from '@/stores/transactions-store';
 
@@ -48,8 +49,10 @@ export default function NewTransactionScreen() {
           accounts={accounts}
           initialAccountId={(requested ?? accounts[0]).id}
           onSubmit={async (input) => {
+            const watch = beginCapWatch();
             const ok = await add(input);
             if (ok) {
+              finishCapWatch(watch);
               // Shown over the screen we go back to, so it never sits on the form.
               const currency = accounts.find((item) => item.id === input.accountId)?.currency;
               const parsed = currency ? parseAmountToCents(input.amount, currency) : null;

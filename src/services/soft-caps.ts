@@ -210,6 +210,27 @@ export function headlineCap(list: readonly ExceededCap[]): ExceededCap | null {
   return best;
 }
 
+// The caps one save pushed from at or under their amount to strictly over, in
+// their current period: exceeded after the save, not exceeded before it. The
+// same accounts and caps are used for both sides, so only the transactions
+// differ. A save while the cap was already over, one that only reaches the
+// amount, a backdated expense, and income all give none. Same order as
+// exceededCaps (global first), so headlineCap applies to the result.
+export function crossedCaps(options: {
+  caps: readonly SoftCap[];
+  accounts: readonly Account[];
+  before: readonly Transaction[];
+  after: readonly Transaction[];
+  defaultCurrency: Currency;
+  now: Date;
+}): ExceededCap[] {
+  const { before, after, ...rest } = options;
+  const wasOver = exceededCaps({ ...rest, transactions: before });
+  return exceededCaps({ ...rest, transactions: after }).filter(
+    (item) => !wasOver.some((old) => old.accountId === item.accountId),
+  );
+}
+
 // One account's cap and how far along it is this period (the account detail
 // line), or null when it has no cap. `exceeded` is strictly above the cap.
 export function accountCapProgress(options: {

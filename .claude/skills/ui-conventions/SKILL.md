@@ -191,6 +191,27 @@ dismiss button, and the owner renders it only while the condition holds.
   with no icon (account detail: "$800 of $1,000 today"); it becomes the banner
   only when the limit is exceeded.
 
+## Snackbar
+
+A short notice that follows an action and offers one next step (the cap-crossing
+notice after saving an expense) uses the `AppSnackbar` wrapper in
+`src/components/ui/`; never use Paper's `Snackbar` directly. It is Paper's
+`Snackbar` in a `Portal`, lifted above the tab bar (`sizes.tabBar`).
+
+- One host mounted once near the root (`CapSnackbarHost`, next to `SuccessHost`).
+  Never a second one. A snackbar never sits on top of the saved card: it waits
+  until the card is gone.
+- Paper's default duration. One action, with its own accessibility label ("View
+  exceeded caps"). The host also announces the text to screen readers.
+- A newer crossing save replaces a pending or showing notice. A newer save that
+  crosses nothing leaves it alone. When a pending notice is about to show, its
+  caps are re-checked: those no longer exceeded are left out (headline and
+  "and N more" recomputed), and with none left it is dropped.
+- The lift is approximate (the host is outside the tabs): it floats about
+  `sizes.tabBar` higher on screens without a tab bar.
+- Never for failures (those stay inline) and never the only way to reach
+  something: the action opens a screen or dialog that is reachable elsewhere.
+
 ## Do not
 
 - No gradients, drop shadows beyond Paper elevation, or decorative icons.

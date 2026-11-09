@@ -37,6 +37,11 @@ export const sizes = {
   badge: 24,
   successIcon: 48,
   successCardMinWidth: 200,
+  // The tab bar's height, the lift that keeps the snackbar above it. Approximate:
+  // the snackbar host sits at the root, outside the tabs, so it cannot use
+  // useBottomTabBarHeight. On screens without a tab bar it floats about this much
+  // higher. Paper already adds the safe-area inset.
+  tabBar: 56,
 } as const;
 
 // Timing and spring settings for the success feedback card.

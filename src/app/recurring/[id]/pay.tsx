@@ -9,6 +9,7 @@ import { actionOccurrence, dayToDate } from '@/services/recurring';
 import type { Account } from '@/services/accounts';
 import type { RecurringPayment } from '@/services/recurring';
 import { useAccounts } from '@/stores/accounts-store';
+import { beginCapWatch, finishCapWatch } from '@/stores/cap-crossing';
 import { useDefaultCurrency } from '@/stores/default-currency';
 import { useRecurring, useRecurringStore } from '@/stores/recurring-store';
 import { showSuccess } from '@/stores/success-store';
@@ -57,8 +58,10 @@ function PayNowBody({ payment, accounts, defaultCurrency }: BodyProps) {
           accounts={accounts}
           defaultCurrency={defaultCurrency}
           onSubmit={async (accountId, amountCents) => {
+            const watch = beginCapWatch();
             const outcome = await pay(payment.id, occurrence, accountId, amountCents);
             if (outcome === 'failed') return false;
+            if (outcome === 'paid') finishCapWatch(watch);
             // Already handled elsewhere (a stale screen): nothing was recorded
             // here, so no success card. The payment was refreshed.
             // Shown over the screen we go back to, so it never sits on the form.

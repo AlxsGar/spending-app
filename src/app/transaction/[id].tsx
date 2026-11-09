@@ -13,6 +13,7 @@ import {
 } from '@/components/ui';
 import { formatCentsForInput, formatSignedMoney } from '@/services/money';
 import { useAccounts } from '@/stores/accounts-store';
+import { beginCapWatch, finishCapWatch } from '@/stores/cap-crossing';
 import { useRecurringStore } from '@/stores/recurring-store';
 import { showSuccess } from '@/stores/success-store';
 import { useTransactions, useTransactionsStore } from '@/stores/transactions-store';
@@ -96,8 +97,10 @@ export default function EditTransactionScreen() {
             note: transaction.note ?? '',
           }}
           onSubmit={async (input) => {
+            const watch = beginCapWatch();
             const saved = await update(transaction.id, input);
             if (!saved) return false;
+            finishCapWatch(watch);
             // Shown over the screen we go back to, so it never sits on the form.
             // The amount comes from what was stored, not from the typed text.
             const currency = accounts.find((item) => item.id === saved.accountId)?.currency;
