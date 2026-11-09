@@ -1,7 +1,7 @@
 import * as SQLite from 'expo-sqlite';
 
 const DB_NAME = 'spending.db';
-const SCHEMA_VERSION = 7;
+const SCHEMA_VERSION = 8;
 
 let dbPromise: Promise<SQLite.SQLiteDatabase> | null = null;
 
@@ -173,6 +173,23 @@ async function migrate(db: SQLite.SQLiteDatabase): Promise<void> {
       // Calendar days (YYYY-MM-DD); NULL on existing rows means none.
       await db.execAsync('ALTER TABLE recurring_payments ADD COLUMN dismissed_at TEXT');
       await db.execAsync('ALTER TABLE transactions ADD COLUMN recurring_occurrence TEXT');
+    }
+    if (current < 8) {
+      // account_id NULL is the global cap. No cap means no row.
+      await db.execAsync(
+        `CREATE TABLE soft_caps (
+          id INTEGER PRIMARY KEY,
+          account_id INTEGER REFERENCES accounts(id) ON DELETE CASCADE,
+          period TEXT NOT NULL CHECK (period IN ('day','week','month')),
+          amount_cents INTEGER NOT NULL CHECK (amount_cents > 0)
+        )`,
+      );
+      // One cap per scope. A plain UNIQUE (account_id) would allow any number
+      // of global rows, because SQLite treats NULLs as distinct. Mapping NULL to
+      // 0 makes the global scope one value; real account ids start at 1.
+      await db.execAsync(
+        'CREATE UNIQUE INDEX idx_soft_caps_scope ON soft_caps (COALESCE(account_id, 0))',
+      );
     }
     await db.execAsync(`PRAGMA user_version = ${SCHEMA_VERSION}`);
   });

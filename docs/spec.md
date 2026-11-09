@@ -205,8 +205,44 @@ Rules:
 - The global cap counts expenses from every account with
   `in_global_cap = true`.
 - A cap only warns. It never blocks or changes a transaction.
-- `[Q5]` How the warning is shown (banner on Home, toast when a transaction
-  crosses the cap, or both). Default until decided: both.
+- Stored in `soft_caps` (`account_id` NULL = the global cap; one cap per
+  scope). No cap means no row; clearing the amount removes the cap. An
+  account's cap is deleted with the account.
+- Periods use the device's local time: daily = the current calendar day,
+  weekly = Monday to Sunday, monthly = the calendar month.
+- A cap counts expenses dated in its current period; income never offsets
+  them. It is exceeded when that total is strictly above the cap.
+- Currency: an account cap uses the account's currency. The global cap uses
+  the default currency (`default_currency` setting, else MXN) and counts
+  only accounts with `in_global_cap = true` in that currency. For an account
+  in another currency, the "Counts toward global cap" switch is disabled and
+  says why.
+- The account's cap (amount and period) and the "Counts toward global cap"
+  switch are on the account form, on create and edit (switch defaults on).
+  The global cap is in Settings.
+- Warnings (decided, was `[Q5]`):
+  - Home shows one compact alert banner while any cap is exceeded; it keeps
+    the same size however many caps are exceeded. With one, it shows that
+    cap ("Global cap: $5,200 of $5,000 this week"). With more, it shows the
+    global cap if exceeded, else the cap furthest over by percentage, plus
+    "and N more caps exceeded". Tapping it opens a dialog listing every
+    exceeded cap (spent, cap, period, amount over); an account cap opens
+    that account's detail, the global cap opens Settings. It is not
+    dismissable; it goes away when no cap is exceeded.
+  - Account detail: when the account has a cap, a single secondary-text line
+    under the balance shows progress ("$800 of $1,000 today"), no icon, not
+    in alert. While that cap is exceeded, the line is replaced by an alert
+    banner ("Cap exceeded: $1,200 of $1,000 today"), not dismissable. The
+    global cap is shown only on Home and in Settings.
+  - When a saved expense (add, edit, Pay now, quick Paid, and "Paid today"
+    when creating a recurring payment) moves a cap's current-period total
+    from at or under to strictly over, a snackbar shows after the saved card
+    closes. It is a single snackbar however many caps the save crossed: it
+    names the cap furthest over (the same headline rule as the Home banner)
+    and the amount over, adds "and N more" when several were crossed, and has
+    a View action that opens the "Caps exceeded" dialog. A backdated expense
+    in an earlier period, a save while already over, income, deletes, undo,
+    and changes to caps or account settings show none.
 
 ## Screens
 
@@ -302,8 +338,6 @@ Watch, web (v1 targets iOS and Android only). `[Q11]` App lock (PIN or biometric
 
 ## Open questions
 
-- `[Q5]` Cap warning presentation (default: banner on Home and toast on the
-  transaction that crosses it).
 - `[Q6]` Home account row when there are many accounts (default: all,
   horizontal scroll).
 - `[Q7]` Chart period selector (default: current month only).

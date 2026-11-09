@@ -10,8 +10,10 @@ import {
   CurrencyPicker,
   IconPicker,
   Screen,
+  SwitchRow,
   TextField,
 } from '@/components/ui';
+import { CapFields } from '@/components/cap-fields';
 import {
   ACCOUNT_ICONS,
   CURRENCIES,
@@ -20,12 +22,18 @@ import {
   validateAccountInput,
   validateBalance,
 } from '@/services/accounts';
-import type { AccountInput } from '@/services/accounts';
+import type { AccountInput, Currency } from '@/services/accounts';
 import { formatCentsForInput } from '@/services/money';
+import { DEFAULT_CAP_PERIOD } from '@/services/soft-caps';
+import type { CapInput } from '@/services/soft-caps';
 import { spacing } from '@/theme';
 
 type Props = {
+  // `cap` and `inGlobalCap` prefill the cap fields (none and on when left out).
   initial: Omit<AccountInput, 'balance'>;
+  // The currency of the global cap. The "Counts toward global cap" switch is
+  // disabled for an account in another currency.
+  defaultCurrency: Currency;
   // Resolves true when the account was saved.
   onSubmit: (input: AccountInput) => Promise<boolean>;
   // Transactions the account already has. When above 0, changing the currency
@@ -47,6 +55,7 @@ const balanceKeyboard = (): KeyboardTypeOptions =>
 
 export function AccountForm({
   initial,
+  defaultCurrency,
   onSubmit,
   transactionCount = 0,
   currentBalanceCents,
@@ -67,6 +76,14 @@ export function AccountForm({
   const [icon, setIcon] = useState(initial.icon);
   const [currency, setCurrency] = useState(initial.currency);
   const [balanceText, setBalanceText] = useState(prefill);
+  const [cap, setCap] = useState<CapInput>(
+    initial.cap ?? { amount: '', period: DEFAULT_CAP_PERIOD },
+  );
+  const [countsTowardGlobal, setCountsTowardGlobal] = useState(initial.inGlobalCap ?? true);
+  // The switch follows the currency as it is now in the form. For another
+  // currency the account can never count, so it shows off and cannot be changed;
+  // the chosen value is kept in case the currency is changed back.
+  const globalCapApplies = currency === defaultCurrency;
   const [currencyTouched, setCurrencyTouched] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -86,7 +103,14 @@ export function AccountForm({
     balance = undefined;
   }
   const mode = editing ? 'update' : 'create';
-  const input: AccountInput = { name, icon, currency, balance };
+  const input: AccountInput = {
+    name,
+    icon,
+    currency,
+    balance,
+    inGlobalCap: countsTowardGlobal,
+    cap,
+  };
 
   // Errors appear after the first save attempt, then follow the input. The
   // balance error also appears as soon as the currency changes, because a
@@ -95,6 +119,9 @@ export function AccountForm({
   const balanceCode =
     submitted || currencyTouched ? validateBalance(balance, currency, mode) : null;
 
+  // Like the balance, the cap amount is checked against the current currency
+  // as soon as it changes (a decimal cap is not valid in JPY).
+  const capShown = submitted || currencyTouched;
   const [confirmingCurrency, setConfirmingCurrency] = useState(false);
 
   const submit = async () => {
@@ -166,6 +193,24 @@ export function AccountForm({
           keyboardType={balanceKeyboard()}
           suffix={currency}
           errorText={balanceCode ? t(`accounts.errors.${balanceCode}`) : undefined}
+        />
+        <CapFields
+          value={cap}
+          onChange={setCap}
+          currency={currency}
+          showError={capShown}
+          helperText={t('caps.amountHelper')}
+        />
+        <SwitchRow
+          label={t('caps.countsTowardGlobal')}
+          value={countsTowardGlobal && globalCapApplies}
+          onChange={setCountsTowardGlobal}
+          disabled={!globalCapApplies}
+          description={
+            globalCapApplies
+              ? undefined
+              : t('caps.globalCurrencyReason', { currency: defaultCurrency })
+          }
         />
         {failed ? <AppText color="alert">{t('accounts.saveError')}</AppText> : null}
         <AppButton label={t('accounts.save')} onPress={() => void save()} disabled={saving} />

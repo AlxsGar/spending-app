@@ -1,6 +1,7 @@
 import { useTranslation } from 'react-i18next';
 import { ScrollView } from 'react-native';
 
+import { GlobalCapSetting } from '@/components/global-cap-setting';
 import { ReminderChips } from '@/components/reminder-chips';
 import { AppButton, AppText, Screen, SegmentedControl, SettingRow } from '@/components/ui';
 // Development tool: a test reminder in 15 seconds (see src/dev/test-reminder.ts).
@@ -47,6 +48,7 @@ export default function SettingsScreen() {
             onChange={(next) => void setDefaultReminders(next)}
           />
         </SettingRow>
+        <GlobalCapSetting />
         {permission === null ? null : (
           <SettingRow label={t('settings.notifications')}>
             <AppText color="textSecondary">{t(`settings.notifications_${permission}`)}</AppText>

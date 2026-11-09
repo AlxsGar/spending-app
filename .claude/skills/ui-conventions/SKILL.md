@@ -167,6 +167,30 @@ a known iOS positioning issue (see docs/slices.md, 5b2).
   change it until that is reported.
 - A row without actions (account detail) simply leaves the menu out.
 
+## Banner
+
+A warning that stays on screen while it applies (the exceeded spending caps on
+Home) uses the `AlertBanner` wrapper in `src/components/ui/`; never use Paper's
+`Banner` directly. It is Paper's `Banner` with no actions, so there is no
+dismiss button, and the owner renders it only while the condition holds.
+
+- One line of text per item, in `alert` with the alert icon (the 40 px
+  `iconLarge`), on the `surface` card background with the shared radius. Never
+  color alone: the icon and the words carry the meaning.
+- Paper marks the message as an alert for screen readers (live region).
+- It sits at the top of the screen's scrolling content, above the first section
+  (Home: above the account cards).
+- Keep it compact: its size does not depend on how many items apply. Home shows
+  the headline cap plus "and N more caps exceeded", never one line per cap.
+- Pass `onPress` to make the whole banner one button (accessibility label = the
+  lines, hint = what it opens). Home's opens an `ActionDialog` listing every
+  exceeded cap with `ListRow`s; a row closes the dialog and navigates. There is
+  no chevron, because Paper's Banner has no slot for one. It stays
+  not dismissable.
+- A calm state of the same fact is a plain `caption` line in `textSecondary`
+  with no icon (account detail: "$800 of $1,000 today"); it becomes the banner
+  only when the limit is exceeded.
+
 ## Do not
 
 - No gradients, drop shadows beyond Paper elevation, or decorative icons.

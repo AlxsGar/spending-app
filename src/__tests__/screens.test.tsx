@@ -1,16 +1,20 @@
-import { fireEvent, screen } from '@testing-library/react-native';
+import { act, fireEvent, screen, waitFor } from '@testing-library/react-native';
 import { StyleSheet } from 'react-native';
 
 import AccountsScreen from '@/app/(tabs)/accounts';
 import HomeScreen from '@/app/(tabs)/index';
 import MovementsScreen from '@/app/(tabs)/movements';
 import SettingsScreen from '@/app/(tabs)/settings';
+import i18n from '@/i18n';
 import { en } from '@/i18n/en';
 import { getDefaultCurrency, listAccounts } from '@/services/accounts';
+import { formatMoney } from '@/services/money';
+import { listCaps, saveGlobalCap } from '@/services/soft-caps';
 import { dayToDate, listRecurring, toDay } from '@/services/recurring';
 import type { RecurringPayment } from '@/services/recurring';
 import { listTransactions } from '@/services/transactions';
 import { useAccountsStore } from '@/stores/accounts-store';
+import { useCapsStore } from '@/stores/caps-store';
 import { useRecurringStore } from '@/stores/recurring-store';
 import { useTransactionsStore } from '@/stores/transactions-store';
 import { silenceConsoleError } from '@/test/console-error';
@@ -22,9 +26,10 @@ fakeAnimationTimers();
 const consoleError = silenceConsoleError();
 
 const mockPush = jest.fn();
+let mockFocused = true;
 
 jest.mock('expo-router', () => ({
-  useIsFocused: () => true,
+  useIsFocused: () => mockFocused,
   useRouter: () => ({ push: mockPush }),
 }));
 jest.mock('@/services/accounts', () => ({
@@ -39,6 +44,11 @@ jest.mock('@/services/transactions', () => ({
 jest.mock('@/services/recurring', () => ({
   ...jest.requireActual('@/services/recurring'),
   listRecurring: jest.fn().mockResolvedValue([]),
+}));
+jest.mock('@/services/soft-caps', () => ({
+  ...jest.requireActual('@/services/soft-caps'),
+  listCaps: jest.fn().mockResolvedValue([]),
+  saveGlobalCap: jest.fn().mockResolvedValue(undefined),
 }));
 jest.mock('@/services/language', () => ({
   loadLanguage: jest.fn(),
@@ -95,6 +105,7 @@ const tx = (
   date,
   note,
   recurringId: null,
+  recurringOccurrence: null,
   createdAt: new Date(2026, 0, 1, 0, 0, id).toISOString(),
 });
 
@@ -107,6 +118,8 @@ describe('tab screens', () => {
     useTransactionsStore.setState({ transactions: [], status: 'idle' });
     (listRecurring as jest.Mock).mockResolvedValue([]);
     useRecurringStore.setState({ payments: [], status: 'idle' });
+    (listCaps as jest.Mock).mockResolvedValue([]);
+    useCapsStore.setState({ caps: [], status: 'idle', saveError: false });
   });
 
   it('Movements lists recurring payments above the transactions with account, amount and next due date', async () => {
@@ -462,5 +475,401 @@ describe('tab screens', () => {
     await renderWithProviders(<SettingsScreen />);
     expect(screen.getByText(en.settings.language)).toBeTruthy();
     expect(screen.queryByLabelText(en.fab.open)).toBeNull();
+  });
+});
+
+describe('spending caps on Home and Settings', () => {
+  const mxn = { ...account, id: 8, name: 'Cash', currency: 'MXN' as const };
+  const expense = (id: number, accountId: number, amountCents: number, date = new Date()) => ({
+    ...tx(id, 'expense', amountCents, null, date.toISOString()),
+    accountId,
+  });
+  const capRow = (id: number, accountId: number | null, period: 'day' | 'week' | 'month', amountCents: number) => ({
+    id,
+    accountId,
+    period,
+    amountCents,
+  });
+  const loadHome = async (
+    accounts: unknown[],
+    transactions: unknown[],
+    caps: unknown[],
+  ) => {
+    (listAccounts as jest.Mock).mockResolvedValue(accounts);
+    (listTransactions as jest.Mock).mockResolvedValue(transactions);
+    (listCaps as jest.Mock).mockResolvedValue(caps);
+    await renderWithProviders(<HomeScreen />);
+    // Everything the banner reads is in, so "no banner" below is a real result.
+    await waitFor(() => {
+      expect(useCapsStore.getState().status).toBe('ready');
+      expect(useAccountsStore.getState().status).toBe('ready');
+      expect(useTransactionsStore.getState().status).toBe('ready');
+    });
+    await act(async () => {});
+  };
+
+  beforeEach(() => {
+    mockFocused = true;
+    mockPush.mockClear();
+    (listAccounts as jest.Mock).mockResolvedValue([]);
+    (listTransactions as jest.Mock).mockResolvedValue([]);
+    (listRecurring as jest.Mock).mockResolvedValue([]);
+    (listCaps as jest.Mock).mockReset().mockResolvedValue([]);
+    (saveGlobalCap as jest.Mock).mockReset().mockResolvedValue(undefined);
+    useAccountsStore.setState({ accounts: [], status: 'idle', saveError: false });
+    useTransactionsStore.setState({ transactions: [], status: 'idle' });
+    useRecurringStore.setState({ payments: [], status: 'idle' });
+    useCapsStore.setState({ caps: [], status: 'idle', saveError: false });
+  });
+
+  describe('Home banner', () => {
+    const bannerButtons = () => screen.queryAllByLabelText(en.caps.bannerHint, { exact: false });
+    const money = (cents: number, currency = 'MXN') => formatMoney(cents, currency);
+
+    it('one exceeded cap: a single line with spent, cap and period, no "more" line, not dismissable', async () => {
+      await loadHome([mxn], [expense(1, 8, 530000)], [capRow(1, null, 'week', 500000)]);
+      expect(
+        await screen.findByText(`Global cap: ${money(530000)} of ${money(500000)} this week`),
+      ).toBeTruthy();
+      expect(screen.queryByText(/more cap/)).toBeNull();
+      expect(screen.queryByText(en.common.done)).toBeNull();
+      // One banner, a button with a label covering the summary and a hint.
+      const button = screen.getByRole('button', { name: /^Global cap: / });
+      expect(button.props.accessibilityHint).toBe(en.caps.bannerHint);
+    });
+
+    it('one exceeded cap still opens the list dialog, with the amount over', async () => {
+      await loadHome([mxn], [expense(1, 8, 530000)], [capRow(1, null, 'week', 500000)]);
+      fireEvent.press(await screen.findByRole('button', { name: /^Global cap: / }));
+      expect(await screen.findByText(en.caps.listTitle)).toBeTruthy();
+      expect(
+        screen.getByText(
+          `${money(530000)} of ${money(500000)} this week · over by ${money(30000)}`,
+        ),
+      ).toBeTruthy();
+    });
+
+    it('two exceeded: the global cap is the headline, plus "and 1 more cap exceeded", in one banner', async () => {
+      await loadHome(
+        [account, mxn],
+        [expense(1, 7, 120000), expense(2, 8, 530000)],
+        [capRow(1, 7, 'day', 100000), capRow(2, null, 'week', 500000)],
+      );
+      expect(
+        await screen.findByText(`Global cap: ${money(530000)} of ${money(500000)} this week`),
+      ).toBeTruthy();
+      expect(screen.getByText('and 1 more cap exceeded')).toBeTruthy();
+      // The account line is only in the dialog, not in the banner.
+      expect(screen.queryByText(/^Savings: /)).toBeNull();
+      expect(screen.getAllByRole('button', { name: /^Global cap: / })).toHaveLength(1);
+    });
+
+    describe('four exceeded caps', () => {
+      // No global cap, so the headline is the one furthest over by percentage:
+      // Savings 120%, Cash 300%, Wallet 150%, Card 110%.
+      const wallet = { ...mxn, id: 9, name: 'Wallet' };
+      const card = { ...mxn, id: 10, name: 'Card' };
+      const rows = () =>
+        loadHome(
+          [account, mxn, wallet, card],
+          [
+            expense(1, 7, 120000),
+            expense(2, 8, 300000),
+            expense(3, 9, 150000),
+            expense(4, 10, 110000),
+          ],
+          [
+            capRow(1, 7, 'day', 100000),
+            capRow(2, 8, 'day', 100000),
+            capRow(3, 9, 'day', 100000),
+            capRow(4, 10, 'day', 100000),
+          ],
+        );
+
+      it('shows the furthest-over cap and "and 3 more caps exceeded" in a single banner', async () => {
+        await rows();
+        expect(
+          await screen.findByText(`Cash: ${money(300000)} of ${money(100000)} today`),
+        ).toBeTruthy();
+        expect(screen.getByText('and 3 more caps exceeded')).toBeTruthy();
+        expect(screen.queryByText(/^Wallet: /)).toBeNull();
+        expect(screen.getAllByRole('button', { name: /^Cash: / })).toHaveLength(1);
+      });
+
+      it('the dialog lists every cap with its amount over; an account row opens that account', async () => {
+        await rows();
+        fireEvent.press(await screen.findByRole('button', { name: /^Cash: / }));
+        expect(await screen.findByText(en.caps.listTitle)).toBeTruthy();
+        const label = (name: string, spent: number, over: number) =>
+          `${name}, ${money(spent)} of ${money(100000)} today, over by ${money(over)}`;
+        expect(screen.getByLabelText(label('Cash', 300000, 200000))).toBeTruthy();
+        expect(screen.getByLabelText(label('Wallet', 150000, 50000))).toBeTruthy();
+        expect(screen.getByLabelText(label('Card', 110000, 10000))).toBeTruthy();
+        expect(
+          screen.getByLabelText(`Savings, ${money(120000, 'USD')} of ${money(100000, 'USD')} today, over by ${money(20000, 'USD')}`),
+        ).toBeTruthy();
+
+        fireEvent.press(screen.getByLabelText(label('Wallet', 150000, 50000)));
+        expect(mockPush).toHaveBeenCalledWith({ pathname: '/account/[id]', params: { id: 9 } });
+        await waitFor(() => expect(screen.queryByText(en.caps.listTitle)).toBeNull());
+      });
+
+      it('Done closes the dialog without navigating', async () => {
+        await rows();
+        fireEvent.press(await screen.findByRole('button', { name: /^Cash: / }));
+        fireEvent.press(await screen.findByText(en.common.done));
+        await waitFor(() => expect(screen.queryByText(en.caps.listTitle)).toBeNull());
+        expect(mockPush).not.toHaveBeenCalled();
+      });
+    });
+
+    it('the global row in the dialog opens the Settings tab', async () => {
+      await loadHome(
+        [account, mxn],
+        [expense(1, 7, 120000), expense(2, 8, 530000)],
+        [capRow(1, 7, 'day', 100000), capRow(2, null, 'week', 500000)],
+      );
+      fireEvent.press(await screen.findByRole('button', { name: /^Global cap: / }));
+      await screen.findByText(en.caps.listTitle);
+      fireEvent.press(
+        screen.getByLabelText(
+          `Global cap, ${money(530000)} of ${money(500000)} this week, over by ${money(30000)}`,
+        ),
+      );
+      expect(mockPush).toHaveBeenCalledWith('/settings');
+    });
+
+    it('the list closes when nothing is exceeded and does not reopen by itself when a cap is exceeded again', async () => {
+      await loadHome([mxn], [expense(1, 8, 600000)], [capRow(1, null, 'month', 500000)]);
+      fireEvent.press(await screen.findByRole('button', { name: /^Global cap: / }));
+      expect(await screen.findByText(en.caps.listTitle)).toBeTruthy();
+
+      await act(async () => {
+        useCapsStore.setState({ caps: [capRow(1, null, 'month', 700000)] });
+      });
+      expect(screen.queryByText(en.caps.listTitle)).toBeNull();
+      expect(bannerButtons()).toHaveLength(0);
+
+      await act(async () => {
+        useCapsStore.setState({ caps: [capRow(1, null, 'month', 500000)] });
+      });
+      // The banner is back, but the dialog stays closed until tapped.
+      const button = await screen.findByRole('button', { name: /^Global cap: / });
+      expect(screen.queryByText(en.caps.listTitle)).toBeNull();
+      fireEvent.press(button);
+      expect(await screen.findByText(en.caps.listTitle)).toBeTruthy();
+    });
+
+    it('is not shown with zero exceeded caps', async () => {
+      await loadHome([mxn], [expense(1, 8, 100)], [capRow(1, null, 'week', 500000)]);
+      await screen.findAllByText('Cash');
+      expect(bannerButtons()).toHaveLength(0);
+    });
+
+    it('shows nothing when the total is equal to the cap, and appears one cent over', async () => {
+      await loadHome([mxn], [expense(1, 8, 500000)], [capRow(1, null, 'month', 500000)]);
+      await screen.findAllByText('Cash');
+      expect(screen.queryByText(/Global cap:/)).toBeNull();
+      await act(async () => {
+        useTransactionsStore.setState({
+          transactions: [expense(1, 8, 500000), expense(2, 8, 1)],
+        });
+      });
+      expect(
+        await screen.findByText(
+          `Global cap: ${formatMoney(500001, 'MXN')} of ${formatMoney(500000, 'MXN')} this month`,
+        ),
+      ).toBeTruthy();
+    });
+
+    it('goes away when the expense is deleted, the cap is raised or the cap is removed', async () => {
+      await loadHome([mxn], [expense(1, 8, 600000)], [capRow(1, null, 'month', 500000)]);
+      expect(await screen.findByText(/Global cap:/)).toBeTruthy();
+
+      await act(async () => {
+        useCapsStore.setState({ caps: [capRow(1, null, 'month', 700000)] });
+      });
+      expect(screen.queryByText(/Global cap:/)).toBeNull();
+
+      await act(async () => {
+        useCapsStore.setState({ caps: [capRow(1, null, 'month', 500000)] });
+      });
+      expect(await screen.findByText(/Global cap:/)).toBeTruthy();
+
+      await act(async () => {
+        useCapsStore.setState({ caps: [] });
+      });
+      expect(screen.queryByText(/Global cap:/)).toBeNull();
+
+      await act(async () => {
+        useCapsStore.setState({ caps: [capRow(1, null, 'month', 500000)] });
+      });
+      expect(await screen.findByText(/Global cap:/)).toBeTruthy();
+      await act(async () => {
+        useTransactionsStore.setState({ transactions: [] });
+      });
+      expect(screen.queryByText(/Global cap:/)).toBeNull();
+    });
+
+    it('the global cap leaves out accounts that opted out and accounts in another currency', async () => {
+      await loadHome(
+        [{ ...mxn, inGlobalCap: false }, account, { ...mxn, id: 9, name: 'Wallet' }],
+        [expense(1, 8, 900000), expense(2, 7, 900000), expense(3, 9, 400000)],
+        [capRow(1, null, 'month', 500000)],
+      );
+      await screen.findAllByText('Wallet');
+      expect(screen.queryByText(/Global cap:/)).toBeNull();
+    });
+
+    it('income never offsets, and an expense in an earlier period does not count', async () => {
+      const lastMonth = new Date();
+      lastMonth.setMonth(lastMonth.getMonth() - 1, 1);
+      await loadHome(
+        [mxn],
+        [
+          expense(1, 8, 400000),
+          { ...tx(2, 'income', 900000, null), accountId: 8 },
+          expense(3, 8, 900000, lastMonth),
+        ],
+        [capRow(1, null, 'month', 500000)],
+      );
+      await screen.findAllByText('Cash');
+      expect(screen.queryByText(/Global cap:/)).toBeNull();
+    });
+
+    it('goes away when the local day changes under a daily cap', async () => {
+      await loadHome([mxn], [expense(1, 8, 600000)], [capRow(1, 8, 'day', 500000)]);
+      expect(await screen.findByText(/Cash: /)).toBeTruthy();
+      await act(async () => {
+        jest.setSystemTime(Date.now() + 36 * 3600 * 1000);
+        jest.advanceTimersByTime(36 * 3600 * 1000);
+      });
+      expect(screen.queryByText(/Cash: /)).toBeNull();
+    });
+
+    it('stays hidden while the caps failed to load, and appears when Home regains focus and the reload works', async () => {
+      (listAccounts as jest.Mock).mockResolvedValue([mxn]);
+      (listTransactions as jest.Mock).mockResolvedValue([expense(1, 8, 600000)]);
+      (listCaps as jest.Mock).mockRejectedValueOnce(new Error('db'));
+      const { rerender } = await renderWithProviders(<HomeScreen />);
+      await waitFor(() => expect(useCapsStore.getState().status).toBe('error'));
+      await screen.findAllByText('Cash');
+      expect(screen.queryByText(/Global cap:/)).toBeNull();
+      expect(listCaps).toHaveBeenCalledTimes(1);
+
+      // Losing focus does not retry; regaining it does.
+      (listCaps as jest.Mock).mockResolvedValue([capRow(1, null, 'month', 500000)]);
+      mockFocused = false;
+      rerender(<HomeScreen />);
+      await act(async () => {});
+      expect(listCaps).toHaveBeenCalledTimes(1);
+      mockFocused = true;
+      rerender(<HomeScreen />);
+      expect(await screen.findByText(/Global cap:/)).toBeTruthy();
+      expect(listCaps).toHaveBeenCalledTimes(2);
+    });
+
+    it('a failed refresh hides the banner while the caps are in error', async () => {
+      await loadHome([mxn], [expense(1, 8, 600000)], [capRow(1, null, 'month', 500000)]);
+      expect(await screen.findByText(/Global cap:/)).toBeTruthy();
+      (listCaps as jest.Mock).mockRejectedValueOnce(new Error('db'));
+      await act(async () => {
+        await useCapsStore.getState().refresh();
+      });
+      expect(useCapsStore.getState().status).toBe('error');
+      expect(screen.queryByText(/Global cap:/)).toBeNull();
+    });
+
+    it('is in Spanish too', async () => {
+      await i18n.changeLanguage('es');
+      try {
+        await loadHome([mxn], [expense(1, 8, 600000)], [capRow(1, null, 'day', 500000)]);
+        expect(
+          await screen.findByText(
+            `Límite global: ${formatMoney(600000, 'MXN')} de ${formatMoney(500000, 'MXN')} hoy`,
+          ),
+        ).toBeTruthy();
+      } finally {
+        await i18n.changeLanguage('en');
+      }
+    });
+  });
+
+  describe('Settings global cap', () => {
+    const amountField = () => screen.findByLabelText(en.caps.amountLabel);
+
+    it('is empty with the monthly period when there is no cap', async () => {
+      await renderWithProviders(<SettingsScreen />);
+      expect(await screen.findByText(en.settings.globalCap)).toBeTruthy();
+      expect((await amountField()).props.value).toBe('');
+      expect(screen.getByText('MXN')).toBeTruthy();
+      expect(
+        screen.getByText(en.settings.globalCapHint.replace('{{currency}}', 'MXN')),
+      ).toBeTruthy();
+    });
+
+    it('shows the stored cap in the default currency', async () => {
+      (listCaps as jest.Mock).mockResolvedValue([capRow(1, null, 'week', 520050)]);
+      await renderWithProviders(<SettingsScreen />);
+      expect((await amountField()).props.value).toBe('5200.50');
+    });
+
+    it('shows its error with Retry when the caps fail to load, and Retry shows the stored cap and period', async () => {
+      (listCaps as jest.Mock).mockRejectedValueOnce(new Error('db'));
+      await renderWithProviders(<SettingsScreen />);
+      expect(await screen.findByText(en.common.loadError)).toBeTruthy();
+      expect(screen.queryByLabelText(en.caps.amountLabel)).toBeNull();
+
+      (listCaps as jest.Mock).mockResolvedValue([capRow(1, null, 'week', 520050)]);
+      fireEvent.press(screen.getByText(en.common.retry));
+
+      expect((await amountField()).props.value).toBe('5200.50');
+      expect(screen.queryByText(en.common.loadError)).toBeNull();
+      const state = (label: string) =>
+        screen.getByRole('button', { name: label }).props.accessibilityState;
+      expect(state(en.caps.periodWeek)).toMatchObject({ checked: true });
+      expect(state(en.caps.periodMonth)).toMatchObject({ checked: false });
+    });
+
+    it('saves the typed amount and period, then shows what is stored', async () => {
+      await renderWithProviders(<SettingsScreen />);
+      fireEvent.changeText(await amountField(), '5000');
+      fireEvent.press(screen.getByText(en.caps.periodWeek));
+      (listCaps as jest.Mock).mockResolvedValue([capRow(1, null, 'week', 500000)]);
+      fireEvent.press(screen.getByText(en.settings.globalCapSave));
+      await waitFor(() =>
+        expect(saveGlobalCap).toHaveBeenCalledWith({ amount: '5000', period: 'week' }, 'MXN'),
+      );
+      await waitFor(() => expect(screen.getByLabelText(en.caps.amountLabel).props.value).toBe('5000.00'));
+    });
+
+    it('clearing the amount saves an empty cap, which removes it', async () => {
+      (listCaps as jest.Mock).mockResolvedValue([capRow(1, null, 'day', 1000)]);
+      await renderWithProviders(<SettingsScreen />);
+      fireEvent.changeText(await amountField(), '');
+      (listCaps as jest.Mock).mockResolvedValue([]);
+      fireEvent.press(screen.getByText(en.settings.globalCapSave));
+      await waitFor(() =>
+        expect(saveGlobalCap).toHaveBeenCalledWith({ amount: '', period: 'day' }, 'MXN'),
+      );
+      await waitFor(() => expect(useCapsStore.getState().caps).toEqual([]));
+    });
+
+    it('an invalid amount shows an error and saves nothing', async () => {
+      await renderWithProviders(<SettingsScreen />);
+      fireEvent.changeText(await amountField(), '-5');
+      fireEvent.press(screen.getByText(en.settings.globalCapSave));
+      expect(await screen.findByText(en.caps.errors.capNotPositive)).toBeTruthy();
+      expect(saveGlobalCap).not.toHaveBeenCalled();
+    });
+
+    it('a failed save shows an error and keeps what was typed', async () => {
+      (saveGlobalCap as jest.Mock).mockRejectedValue(new Error('db'));
+      await renderWithProviders(<SettingsScreen />);
+      fireEvent.changeText(await amountField(), '100');
+      fireEvent.press(screen.getByText(en.settings.globalCapSave));
+      expect(await screen.findByText(en.settings.globalCapSaveError)).toBeTruthy();
+      expect(screen.getByLabelText(en.caps.amountLabel).props.value).toBe('100');
+    });
   });
 });

@@ -2,6 +2,7 @@ export { ActionDialog } from './ActionDialog';
 export type { DialogAction } from './ActionDialog';
 export { ActionMenu } from './ActionMenu';
 export type { MenuAction } from './ActionMenu';
+export { AlertBanner } from './AlertBanner';
 export { AmountText } from './AmountText';
 export { AppBadge } from './AppBadge';
 export { AppButton } from './AppButton';

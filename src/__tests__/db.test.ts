@@ -128,10 +128,11 @@ describe('db service', () => {
     expect(consoleError()).toHaveBeenCalledTimes(1);
   });
 
-  it('runs the table steps in order on a fresh install and ends at v7', async () => {
+  it('runs the table steps in order on a fresh install and ends at v8', async () => {
     await initDb();
     const tables = creates();
-    expect(tables).toHaveLength(6);
+    expect(tables).toHaveLength(7);
+    expect(tables[6]).toContain('soft_caps');
     expect(tables[0]).toContain('settings');
     expect(tables[1]).toContain('accounts');
     expect(tables[2]).toContain('transactions (');
@@ -140,7 +141,7 @@ describe('db service', () => {
     expect(tables[4]).toContain('recurring_payments');
     expect(tables[5]).toContain('transactions_new');
     expect(tables[5]).toContain('REFERENCES recurring_payments(id) ON DELETE SET NULL');
-    expect(mockUserVersion).toBe(7);
+    expect(mockUserVersion).toBe(8);
   });
 
   it('runs the same v4 statements on a fresh install and on a v3 upgrade', async () => {
@@ -162,8 +163,8 @@ describe('db service', () => {
     resetDbForTests();
     await initDb();
     expect(v5Statements()).toEqual(fresh);
-    // A v4 upgrade runs only the v5 and v6 steps: the one new table and the rebuild.
-    expect(creates()).toHaveLength(2);
+    // A v4 upgrade runs only the v5 to v8 steps: the new tables and the rebuild.
+    expect(creates()).toHaveLength(3);
     expect(creates()[0]).toContain('recurring_payments');
   });
 
@@ -175,23 +176,23 @@ describe('db service', () => {
     resetDbForTests();
     await initDb();
     expect(v6Statements()).toEqual(fresh);
-    expect(creates()).toHaveLength(2);
+    expect(creates()).toHaveLength(3);
   });
 
   it('runs only the steps after the stored version', async () => {
     mockUserVersion = 1;
     await initDb();
-    expect(creates()).toHaveLength(5);
+    expect(creates()).toHaveLength(6);
     expect(creates()[0]).toContain('accounts');
     mockUserVersion = 2;
     mockEvents = [];
     resetDbForTests();
     await initDb();
-    expect(creates()).toHaveLength(4);
+    expect(creates()).toHaveLength(5);
     expect(creates()[0]).toContain('transactions (');
   });
 
-  it('runs the same v7 statements on a fresh install and on a v6 upgrade, and nothing else', async () => {
+  it('runs the same v7 and v8 statements on a fresh install and on a v6 upgrade, and nothing else', async () => {
     await initDb();
     const fresh = v7Statements();
     expect(fresh).toEqual([
@@ -203,12 +204,15 @@ describe('db service', () => {
     resetDbForTests();
     await initDb();
     expect(v7Statements()).toEqual(fresh);
-    // Only the two columns and the version: no table is created or rebuilt.
-    expect(statements().filter((sql) => !sql.startsWith('PRAGMA foreign_keys'))).toEqual([
-      ...fresh,
-      'PRAGMA user_version = 7',
-    ]);
-    expect(mockUserVersion).toBe(7);
+    // The two columns, then the soft_caps table and its scope index, then the
+    // version: no other table is created or rebuilt.
+    const run = statements().filter((sql) => !sql.startsWith('PRAGMA foreign_keys'));
+    expect(run).toHaveLength(fresh.length + 3);
+    expect(run.slice(0, 2)).toEqual(fresh);
+    expect(run[2]).toContain('CREATE TABLE soft_caps');
+    expect(run[3]).toContain('CREATE UNIQUE INDEX idx_soft_caps_scope');
+    expect(run[4]).toBe('PRAGMA user_version = 8');
+    expect(mockUserVersion).toBe(8);
   });
 
   it.each([
@@ -219,7 +223,7 @@ describe('db service', () => {
     mockFailOn = failOn;
     await expect(initDb()).rejects.toThrow('boom');
     expect(mockUserVersion).toBe(6);
-    expect(statements()).not.toContain('PRAGMA user_version = 7');
+    expect(statements()).not.toContain('PRAGMA user_version = 8');
     expect(mockEvents).toContain('ROLLBACK');
     expect(mockEvents).not.toContain('COMMIT');
   });
@@ -242,12 +246,12 @@ describe('db service', () => {
       'PRAGMA foreign_key_check',
       'ALTER TABLE recurring_payments ADD COLUMN dismissed_at',
       'ALTER TABLE transactions ADD COLUMN recurring_occurrence',
-      'PRAGMA user_version = 7',
+      'PRAGMA user_version = 8',
     ].map((prefix) => run.findIndex((sql) => sql.startsWith(prefix)));
     expect(order.every((index) => index >= 0)).toBe(true);
     expect([...order].sort((a, b) => a - b)).toEqual(order);
     expect(mockEvents.indexOf('BEGIN')).toBeLessThan(mockEvents.indexOf(run[order[0]]));
-    expect(mockEvents.indexOf('PRAGMA user_version = 7')).toBeLessThan(
+    expect(mockEvents.indexOf('PRAGMA user_version = 8')).toBeLessThan(
       mockEvents.indexOf('COMMIT'),
     );
   });
@@ -264,7 +268,7 @@ describe('db service', () => {
     mockFailOn = failOn;
     await expect(initDb()).rejects.toThrow('boom');
     expect(mockUserVersion).toBe(5);
-    expect(statements()).not.toContain('PRAGMA user_version = 7');
+    expect(statements()).not.toContain('PRAGMA user_version = 8');
     expect(mockEvents).toContain('ROLLBACK');
     expect(mockEvents).not.toContain('COMMIT');
   });
@@ -277,7 +281,7 @@ describe('db service', () => {
       'ALTER TABLE accounts ADD COLUMN balance_anchor_cents INTEGER NOT NULL DEFAULT 0',
       'ALTER TABLE accounts ADD COLUMN balance_anchor_at TEXT',
       'CREATE TABLE recurring_payments',
-      'PRAGMA user_version = 7',
+      'PRAGMA user_version = 8',
     ].map((prefix) => run.findIndex((sql) => sql.startsWith(prefix)));
     expect(order.every((index) => index >= 0)).toBe(true);
     expect([...order].sort((a, b) => a - b)).toEqual(order);
@@ -291,7 +295,7 @@ describe('db service', () => {
     mockFailOn = failOn;
     await expect(initDb()).rejects.toThrow('boom');
     expect(mockUserVersion).toBe(4);
-    expect(statements()).not.toContain('PRAGMA user_version = 7');
+    expect(statements()).not.toContain('PRAGMA user_version = 8');
     expect(mockEvents).toContain('ROLLBACK');
     expect(mockEvents).not.toContain('COMMIT');
   });
@@ -312,12 +316,12 @@ describe('db service', () => {
       'PRAGMA foreign_key_check',
       'ALTER TABLE accounts ADD COLUMN balance_anchor_cents',
       'ALTER TABLE accounts ADD COLUMN balance_anchor_at',
-      'PRAGMA user_version = 7',
+      'PRAGMA user_version = 8',
     ].map((prefix) => run.findIndex((sql) => sql.startsWith(prefix)));
     expect(order.every((index) => index >= 0)).toBe(true);
     expect([...order].sort((a, b) => a - b)).toEqual(order);
     expect(mockEvents.indexOf('BEGIN')).toBeLessThan(mockEvents.indexOf(run[order[0]]));
-    expect(mockEvents.indexOf('PRAGMA user_version = 7')).toBeLessThan(
+    expect(mockEvents.indexOf('PRAGMA user_version = 8')).toBeLessThan(
       mockEvents.indexOf('COMMIT'),
     );
   });
@@ -335,7 +339,7 @@ describe('db service', () => {
       mockFailOn = failOn;
       await expect(initDb()).rejects.toThrow('boom');
       expect(mockUserVersion).toBe(3);
-      expect(statements()).not.toContain('PRAGMA user_version = 7');
+      expect(statements()).not.toContain('PRAGMA user_version = 8');
       expect(mockEvents).toContain('ROLLBACK');
       expect(mockEvents).not.toContain('COMMIT');
     });
@@ -344,7 +348,7 @@ describe('db service', () => {
       mockUserVersion = 3;
       mockViolations = 1;
       await expect(initDb()).rejects.toThrow('Foreign key check failed');
-      expect(statements()).not.toContain('PRAGMA user_version = 7');
+      expect(statements()).not.toContain('PRAGMA user_version = 8');
       expect(mockEvents).toContain('ROLLBACK');
       expect(mockUserVersion).toBe(3);
     });
@@ -356,7 +360,7 @@ describe('db service', () => {
       mockFailOn = null;
       mockEvents = [];
       await initDb();
-      expect(mockUserVersion).toBe(7);
+      expect(mockUserVersion).toBe(8);
       expect(statements()).toContain('DROP TABLE transactions');
     });
   });
@@ -378,7 +382,7 @@ describe('db service', () => {
     });
 
     it('are turned ON even when no migration runs', async () => {
-      mockUserVersion = 7;
+      mockUserVersion = 8;
       await initDb();
       expect(mockEvents).not.toContain('BEGIN');
       expect(mockForeignKeys).toBe(1);
@@ -386,7 +390,7 @@ describe('db service', () => {
     });
 
     it('fail loudly when they cannot be switched on', async () => {
-      mockUserVersion = 7;
+      mockUserVersion = 8;
       // A silent no-op: the pragma runs but the setting stays 0.
       mockInTransaction = true;
       await expect(initDb()).rejects.toThrow('Could not enable foreign keys');
@@ -394,7 +398,7 @@ describe('db service', () => {
   });
 
   it('does not migrate again when already up to date', async () => {
-    mockUserVersion = 7;
+    mockUserVersion = 8;
     await initDb();
     expect(mockEvents).not.toContain('BEGIN');
     expect(statements().filter((sql) => !sql.startsWith('PRAGMA foreign_keys'))).toEqual([]);

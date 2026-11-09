@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { ScrollView } from 'react-native';
 
 import { AccountCards } from '@/components/account-cards';
+import { CapBanner } from '@/components/cap-banner';
 import { RecurringStack } from '@/components/recurring-stack';
 import { TabScreen } from '@/components/tab-screen';
 import { TransactionRow } from '@/components/transaction-row';
@@ -57,6 +58,7 @@ export default function HomeScreen() {
   } else {
     body = (
       <ScrollView>
+        <CapBanner />
         <AccountCards
           accounts={accounts}
           balances={balances}

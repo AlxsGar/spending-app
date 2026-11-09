@@ -218,9 +218,9 @@ afterEach(() => {
 });
 
 describe('fresh install', () => {
-  it('ends at v7 with the recurring table, the anchor columns, the foreign keys in the transactions DDL and the indexes', async () => {
+  it('ends at v8 with the soft_caps table, the recurring table, the anchor columns, the foreign keys in the transactions DDL and the indexes', async () => {
     await initDb();
-    expect(userVersion()).toBe(7);
+    expect(userVersion()).toBe(8);
     expect(recurringColumns()).toEqual([
       { name: 'id', type: 'INTEGER', notnull: 0, dflt_value: null },
       // Nullable: a recurring payment may have no account.
@@ -278,18 +278,18 @@ describe('fresh install', () => {
   });
 });
 
-describe('upgrades end at v7 with an identical schema', () => {
-  it('from v1, v2, v3, v4, v5 and v6 the schema equals a fresh install', async () => {
+describe('upgrades end at v8 with an identical schema', () => {
+  it('from v1, v2, v3, v4, v5, v6 and v7 the schema equals a fresh install', async () => {
     await initDb();
     const fresh = schema();
     mockReal.close();
 
-    for (const version of [1, 2, 3, 4, 5, 6] as const) {
+    for (const version of [1, 2, 3, 4, 5, 6, 7] as const) {
       mockReal = createRealSqlite();
       resetDbForTests();
       seedSchema(mockReal, version);
       await initDb();
-      expect(userVersion()).toBe(7);
+      expect(userVersion()).toBe(8);
       expect(schema()).toEqual(fresh);
       mockReal.close();
     }
@@ -301,7 +301,7 @@ describe('upgrades end at v7 with an identical schema', () => {
     seedSchema(mockReal, 1);
     mockReal.exec("INSERT INTO settings (key, value) VALUES ('language', 'es')");
     await initDb();
-    expect(userVersion()).toBe(7);
+    expect(userVersion()).toBe(8);
     expect(await getSetting('language')).toBe('es');
     expect(allTransactions()).toEqual([]);
   });
@@ -311,7 +311,7 @@ describe('upgrades end at v7 with an identical schema', () => {
     mockReal.exec("INSERT INTO settings (key, value) VALUES ('language', 'es')");
     insertAccounts();
     await initDb();
-    expect(userVersion()).toBe(7);
+    expect(userVersion()).toBe(8);
     expect(await getSetting('language')).toBe('es');
     expect(mockReal.query('SELECT id, name, in_global_cap FROM accounts ORDER BY id')).toEqual([
       { id: 1, name: 'Checking', in_global_cap: 1 },
@@ -327,7 +327,7 @@ describe('upgrades end at v7 with an identical schema', () => {
 
     await initDb();
 
-    expect(userVersion()).toBe(7);
+    expect(userVersion()).toBe(8);
     expect(await getSetting('language')).toBe('es');
     expect(await getSetting('default_currency')).toBe('EUR');
     // Every old column is unchanged; the two new ones have their defaults.
@@ -351,7 +351,7 @@ describe('upgrades end at v7 with an identical schema', () => {
 
     await initDb();
 
-    expect(userVersion()).toBe(7);
+    expect(userVersion()).toBe(8);
     expect(accountColumns().map((column) => column.name)).toEqual([
       'balance_anchor_cents',
       'balance_anchor_at',
@@ -528,7 +528,7 @@ describe('a failed upgrade from v3 changes nothing, and a retry succeeds', () =>
     mockReal.clearFailure();
     resetDbForTests();
     await initDb();
-    expect(userVersion()).toBe(7);
+    expect(userVersion()).toBe(8);
     expect(allTransactions()).toEqual(VALID_UPGRADED);
     expect(foreignKeys()).toBe(1);
     expect(schema().some((item) => item.name === 'transactions_new')).toBe(false);
@@ -572,7 +572,7 @@ describe('a failed upgrade from v3 changes nothing, and a retry succeeds', () =>
     // Without the violation the same database upgrades.
     resetDbForTests();
     await initDb();
-    expect(userVersion()).toBe(7);
+    expect(userVersion()).toBe(8);
     expect(allTransactions()).toEqual(VALID_UPGRADED);
   });
 
@@ -586,7 +586,7 @@ describe('a failed upgrade from v3 changes nothing, and a retry succeeds', () =>
 
   it('fails when writing the version, after the rebuild', async () => {
     await seedV3();
-    mockReal.failOn('PRAGMA user_version = 7');
+    mockReal.failOn('PRAGMA user_version = 8');
     await expect(initDb()).rejects.toThrow('Injected failure');
     expect(userVersion()).toBe(3);
     expect(
@@ -602,7 +602,7 @@ describe('a failed upgrade from v4 changes nothing, and a retry succeeds', () =>
   const failures = [
     ['the first ADD COLUMN', 'ADD COLUMN balance_anchor_cents'],
     ['the second ADD COLUMN', 'ADD COLUMN balance_anchor_at'],
-    ['writing the version', 'PRAGMA user_version = 7'],
+    ['writing the version', 'PRAGMA user_version = 8'],
   ] as const;
 
   it.each(failures)('fails at %s', async (_label, statement) => {
@@ -631,7 +631,7 @@ describe('a failed upgrade from v4 changes nothing, and a retry succeeds', () =>
     mockReal.clearFailure();
     resetDbForTests();
     await initDb();
-    expect(userVersion()).toBe(7);
+    expect(userVersion()).toBe(8);
     expect(accountColumns()).toHaveLength(2);
     expectNoAnchors();
     expect(allTransactions()).toEqual(VALID_UPGRADED);
@@ -652,7 +652,7 @@ describe('diagnostic logging', () => {
     // Still retried on the next call (the cached rejection is reset).
     mockReal.clearFailure();
     await initDb();
-    expect(userVersion()).toBe(7);
+    expect(userVersion()).toBe(8);
     expect(consoleError()).toHaveBeenCalledTimes(1);
   });
 
@@ -672,7 +672,7 @@ describe('upgrade from v5 (recurring payments)', () => {
 
     await initDb();
 
-    expect(userVersion()).toBe(7);
+    expect(userVersion()).toBe(8);
     expect(await getSetting('language')).toBe('es');
     expect(await getSetting('default_currency')).toBe('EUR');
     expect(mockReal.query('SELECT * FROM accounts ORDER BY id')).toEqual(accountsBefore);
@@ -846,7 +846,7 @@ describe('a failed upgrade from v5 changes nothing, and a retry succeeds', () =>
     ['the foreign key check', 'PRAGMA foreign_key_check'],
     ['the v7 dismissed_at column', 'ADD COLUMN dismissed_at'],
     ['the v7 recurring_occurrence column', 'ADD COLUMN recurring_occurrence'],
-    ['writing the version', 'PRAGMA user_version = 7'],
+    ['writing the version', 'PRAGMA user_version = 8'],
   ] as const;
 
   it.each(failures)('fails at %s', async (_label, statement) => {
@@ -884,7 +884,7 @@ describe('a failed upgrade from v5 changes nothing, and a retry succeeds', () =>
     mockReal.clearFailure();
     resetDbForTests();
     await initDb();
-    expect(userVersion()).toBe(7);
+    expect(userVersion()).toBe(8);
     expect(allTransactions()).toEqual(VALID_UPGRADED);
     expect(mockReal.query('SELECT * FROM accounts ORDER BY id')).toEqual(accountsBefore);
     expect(foreignKeys()).toBe(1);
@@ -922,7 +922,7 @@ describe('a failed upgrade from v5 changes nothing, and a retry succeeds', () =>
 
     resetDbForTests();
     await initDb();
-    expect(userVersion()).toBe(7);
+    expect(userVersion()).toBe(8);
     expect(allTransactions()).toEqual(VALID_UPGRADED);
   });
 });
@@ -1231,7 +1231,7 @@ describe('upgrade from v6 (dismissed_at and recurring_occurrence)', () => {
 
     await initDb();
 
-    expect(userVersion()).toBe(7);
+    expect(userVersion()).toBe(8);
     expect(await getSetting('language')).toBe('es');
     expect(await getSetting('default_currency')).toBe('EUR');
     expect(mockReal.query('SELECT * FROM accounts ORDER BY id')).toEqual(accountsBefore);
@@ -1279,7 +1279,7 @@ describe('a failed upgrade from v6 changes nothing, and a retry succeeds', () =>
   const failures = [
     ['the dismissed_at column', 'ADD COLUMN dismissed_at'],
     ['the recurring_occurrence column', 'ADD COLUMN recurring_occurrence'],
-    ['writing the version', 'PRAGMA user_version = 7'],
+    ['writing the version', 'PRAGMA user_version = 8'],
   ] as const;
 
   it.each(failures)('fails at %s', async (_label, statement) => {
@@ -1311,7 +1311,7 @@ describe('a failed upgrade from v6 changes nothing, and a retry succeeds', () =>
     mockReal.clearFailure();
     resetDbForTests();
     await initDb();
-    expect(userVersion()).toBe(7);
+    expect(userVersion()).toBe(8);
     expect(recurringRows()).toEqual(
       recurringBefore.map((row) => ({ ...(row as object), dismissed_at: null })),
     );

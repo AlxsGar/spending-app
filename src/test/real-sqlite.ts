@@ -200,8 +200,12 @@ const V6_TRANSACTIONS = `CREATE TABLE transactions_new (
 ALTER TABLE transactions_new RENAME TO transactions;
 CREATE INDEX idx_transactions_account_date ON transactions (account_id, date)`;
 
-// Creates the schema of an older release (1 to 6) and sets its user_version.
-export function seedSchema(db: RealSqlite, version: 1 | 2 | 3 | 4 | 5 | 6): void {
+// v7 added two nullable columns.
+const V7_COLUMNS = `ALTER TABLE recurring_payments ADD COLUMN dismissed_at TEXT;
+ALTER TABLE transactions ADD COLUMN recurring_occurrence TEXT`;
+
+// Creates the schema of an older release (1 to 7) and sets its user_version.
+export function seedSchema(db: RealSqlite, version: 1 | 2 | 3 | 4 | 5 | 6 | 7): void {
   db.exec(V1);
   if (version >= 2) db.exec(V2);
   if (version === 3) db.exec(V3);
@@ -211,5 +215,6 @@ export function seedSchema(db: RealSqlite, version: 1 | 2 | 3 | 4 | 5 | 6): void
     db.exec(V6_RECURRING);
     db.exec(V6_TRANSACTIONS);
   }
+  if (version >= 7) db.exec(V7_COLUMNS);
   db.exec(`PRAGMA user_version = ${version}`);
 }

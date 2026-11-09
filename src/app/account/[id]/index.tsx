@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { StyleSheet, View } from 'react-native';
 
+import { AccountCapLine } from '@/components/account-cap-line';
 import { RecurringSection } from '@/components/recurring-section';
 import { TransactionList } from '@/components/transaction-list';
 import {
@@ -135,6 +136,7 @@ export default function AccountDetailScreen() {
             align="left"
             colored
           />
+          <AccountCapLine accountId={account.id} currency={account.currency} />
           {account.balanceAnchorAt ? (
             <AppText variant="caption" color="textSecondary">
               {t('accounts.balanceSetOn', {

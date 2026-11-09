@@ -10,6 +10,7 @@ import {
 import type { Account, AccountInput } from '@/services/accounts';
 import { requestReminderSync } from '@/services/reminders';
 
+import { useCapsStore } from './caps-store';
 import { useRecurringStore } from './recurring-store';
 import { useTransactionsStore } from './transactions-store';
 
@@ -43,6 +44,11 @@ export const useAccountsStore = create<AccountsState>((set, get) => ({
     try {
       const account = await createAccount(input);
       set((state) => ({ accounts: [...state.accounts, account], saveError: false }));
+      // The account and its cap are already saved. If this re-read fails, the
+      // caps store goes to its error state and the save still succeeds: Home's
+      // banner may lag until the next focus retries the load. Accepted, because
+      // reporting a failed save for data that was written would be wrong.
+      if (input.cap) void useCapsStore.getState().refresh();
       return true;
     } catch {
       set({ saveError: true });
@@ -56,6 +62,8 @@ export const useAccountsStore = create<AccountsState>((set, get) => ({
         accounts: state.accounts.map((item) => (item.id === id ? account : item)),
         saveError: false,
       }));
+      // Same as in add: a failed caps re-read does not fail the saved update.
+      if (input.cap) void useCapsStore.getState().refresh();
       // A reminder's amount is shown in the account's currency.
       void requestReminderSync();
       return true;
@@ -76,6 +84,8 @@ export const useAccountsStore = create<AccountsState>((set, get) => ({
         if (payment.accountId === id) transactionsStore.unlinkRecurring(payment.id);
       }
       useRecurringStore.getState().dropForAccount(id);
+      // The cascade deleted the account's cap.
+      useCapsStore.getState().dropForAccount(id);
       set((state) => ({
         accounts: state.accounts.filter((item) => item.id !== id),
         saveError: false,

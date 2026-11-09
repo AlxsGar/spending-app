@@ -1,4 +1,5 @@
 import { useAccountsStore } from '@/stores/accounts-store';
+import { useCapsStore } from '@/stores/caps-store';
 import { useRecurringStore } from '@/stores/recurring-store';
 import { useTransactionsStore } from '@/stores/transactions-store';
 
@@ -12,6 +13,12 @@ jest.mock('@/services/accounts', () => ({
   createAccount: (input: unknown) => mockCreate(input),
   updateAccount: (id: number, input: unknown) => mockUpdate(id, input),
   removeAccount: (id: number) => mockRemove(id),
+}));
+
+const mockListCaps = jest.fn();
+jest.mock('@/services/soft-caps', () => ({
+  listCaps: () => mockListCaps(),
+  saveGlobalCap: jest.fn(),
 }));
 
 const make = (id: number, name: string) => ({
@@ -28,6 +35,20 @@ describe('accounts store', () => {
   beforeEach(() => {
     jest.resetAllMocks();
     useAccountsStore.setState({ accounts: [], status: 'idle', saveError: false });
+  });
+
+  it('a failed caps refresh after a save does not fail add or update', async () => {
+    mockListCaps.mockRejectedValue(new Error('db'));
+    mockCreate.mockResolvedValue(make(1, 'A'));
+    mockUpdate.mockResolvedValue(make(1, 'B'));
+    const cap = { amount: '5', period: 'day' as const };
+    expect(await useAccountsStore.getState().add({ ...input, cap })).toBe(true);
+    expect(await useAccountsStore.getState().update(1, { ...input, cap })).toBe(true);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(mockListCaps).toHaveBeenCalledTimes(2);
+    expect(useCapsStore.getState().status).toBe('error');
+    expect(useAccountsStore.getState().saveError).toBe(false);
+    expect(useAccountsStore.getState().accounts.map((item) => item.name)).toEqual(['B']);
   });
 
   it('loads accounts', async () => {

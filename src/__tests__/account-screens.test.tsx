@@ -1,4 +1,5 @@
 import { act, fireEvent, screen, waitFor } from '@testing-library/react-native';
+import { StyleSheet } from 'react-native';
 
 import NewAccountScreen from '@/app/account/new';
 import AccountDetailScreen from '@/app/account/[id]/index';
@@ -18,11 +19,14 @@ import {
 } from '@/services/accounts';
 import { getSetting } from '@/services/db';
 import { computeBalances, listTransactions } from '@/services/transactions';
+import { listCaps } from '@/services/soft-caps';
 import { useAccountsStore } from '@/stores/accounts-store';
+import { useCapsStore } from '@/stores/caps-store';
 import { useRecurringStore } from '@/stores/recurring-store';
 import { useSuccessStore } from '@/stores/success-store';
 import { useTransactionsStore } from '@/stores/transactions-store';
 import { fakeAnimationTimers, renderWithProviders } from '@/test/render';
+import { colors } from '@/theme';
 
 fakeAnimationTimers();
 
@@ -55,6 +59,14 @@ jest.mock('@/services/recurring', () => ({
 
 jest.mock('@/services/db', () => ({ getSetting: jest.fn(), initDb: jest.fn() }));
 
+jest.mock('@/services/soft-caps', () => ({
+  ...jest.requireActual('@/services/soft-caps'),
+  listCaps: jest.fn(),
+}));
+
+// What the forms send for the cap fields when the user leaves them alone.
+const capFields = { inGlobalCap: true, cap: { amount: '', period: 'month' } };
+
 const account = {
   id: 7,
   name: 'Savings',
@@ -75,6 +87,8 @@ beforeEach(() => {
   useAccountsStore.setState({ accounts: [], status: 'idle', saveError: false });
   useTransactionsStore.setState({ transactions: [], status: 'idle' });
   useRecurringStore.setState({ payments: [], status: 'idle' });
+  (listCaps as jest.Mock).mockResolvedValue([]);
+  useCapsStore.setState({ caps: [], status: 'idle', saveError: false });
 });
 
 const recurringPayment = (
@@ -380,6 +394,93 @@ describe('account detail screen', () => {
   });
 });
 
+describe('account detail cap line', () => {
+  const spend = (cents: number, accountId = 7, kind: 'expense' | 'income' = 'expense') => ({
+    id: Math.floor(Math.random() * 1e6),
+    accountId,
+    kind,
+    amountCents: cents,
+    date: new Date().toISOString(),
+    note: null,
+    recurringId: null,
+    createdAt: '2026-01-01T00:00:00.000Z',
+  });
+  const money = (cents: number) => formatMoney(cents, 'EUR');
+  const cap = (accountId: number | null, amountCents: number, period = 'day') => ({
+    id: Math.floor(Math.random() * 1e6),
+    accountId,
+    period,
+    amountCents,
+  });
+  const show = async (transactions: unknown[], caps: unknown[], addLabel = en.transactions.add) => {
+    (listTransactions as jest.Mock).mockResolvedValue(transactions);
+    (listCaps as jest.Mock).mockResolvedValue(caps);
+    await renderWithProviders(<AccountDetailScreen />);
+    await waitFor(() => expect(useCapsStore.getState().status).toBe('ready'));
+    await screen.findByText(addLabel);
+    // Let the other stores the screen reads finish, so no update lands later.
+    await waitFor(() => expect(useRecurringStore.getState().status).toBe('ready'));
+    await act(async () => {});
+  };
+
+  it('shows nothing without a cap, and never the global cap', async () => {
+    await show([spend(900000)], [cap(null, 100)]);
+    expect(screen.queryByText(/ today/)).toBeNull();
+    expect(screen.queryByText(/Cap exceeded/)).toBeNull();
+  });
+
+  it('under the cap: one quiet secondary line, no banner', async () => {
+    await show([spend(80000), spend(500000, 7, 'income')], [cap(7, 100000)]);
+    const line = await screen.findByText(`${money(80000)} of ${money(100000)} today`);
+    expect(StyleSheet.flatten(line.props.style).color).toBe(colors.textSecondary);
+    expect(screen.queryByText(/Cap exceeded/)).toBeNull();
+  });
+
+  it('exactly at the cap it is still the quiet line', async () => {
+    await show([spend(100000)], [cap(7, 100000, 'week')]);
+    expect(await screen.findByText(`${money(100000)} of ${money(100000)} this week`)).toBeTruthy();
+    expect(screen.queryByText(/Cap exceeded/)).toBeNull();
+  });
+
+  it('over the cap the line becomes an alert banner', async () => {
+    await show([spend(120000)], [cap(7, 100000, 'month')]);
+    const banner = await screen.findByText(
+      `Cap exceeded: ${money(120000)} of ${money(100000)} this month`,
+    );
+    expect(StyleSheet.flatten(banner.props.style).color).toBe(colors.alert);
+    expect(screen.queryByText(`${money(120000)} of ${money(100000)} this month`)).toBeNull();
+  });
+
+  it('follows the transactions and the caps, and hides while the caps are in error', async () => {
+    await show([spend(120000)], [cap(7, 100000)]);
+    expect(await screen.findByText(/Cap exceeded/)).toBeTruthy();
+    await act(async () => {
+      useCapsStore.setState({ caps: [{ id: 1, accountId: 7, period: 'day', amountCents: 200000 }] });
+    });
+    expect(screen.queryByText(/Cap exceeded/)).toBeNull();
+    expect(screen.getByText(`${money(120000)} of ${money(200000)} today`)).toBeTruthy();
+    await act(async () => {
+      useCapsStore.setState({ status: 'error' });
+    });
+    expect(screen.queryByText(/ of /)).toBeNull();
+  });
+
+  it('is in Spanish', async () => {
+    await i18n.changeLanguage('es');
+    try {
+      await show([spend(120000)], [cap(7, 100000)], es.transactions.add);
+      expect(
+        await screen.findByText(`Límite excedido: ${money(120000)} de ${money(100000)} hoy`),
+      ).toBeTruthy();
+    } finally {
+      // Inside act: the mounted screen re-renders for the language change.
+      await act(async () => {
+        await i18n.changeLanguage('en');
+      });
+    }
+  });
+});
+
 describe('account delete with transactions', () => {
   const tx = (id: number) => ({
     id,
@@ -479,6 +580,7 @@ describe('new account screen', () => {
         name: 'New',
         icon: 'bank',
         currency: expected,
+        ...capFields,
       }),
     );
     await waitFor(() => expect(mockBack).toHaveBeenCalled());
@@ -524,6 +626,7 @@ describe('new account screen', () => {
         icon: 'bank',
         currency: 'USD',
         balance: '-200',
+        ...capFields,
       }),
     );
   });
@@ -689,6 +792,7 @@ describe('edit account screen', () => {
       icon: 'wallet',
       currency: 'EUR',
       balance: undefined,
+      ...capFields,
     });
     expect(useSuccessStore.getState().current).toMatchObject({
       icon: 'check',
@@ -720,6 +824,7 @@ describe('edit account screen', () => {
         icon: 'wallet',
         currency: 'EUR',
         balance: '-30',
+        ...capFields,
       }),
     );
   });
@@ -775,6 +880,7 @@ describe('edit account screen', () => {
       icon: 'wallet',
       currency: 'USD',
       balance: '80',
+      ...capFields,
     });
   });
 
@@ -794,10 +900,51 @@ describe('edit account screen', () => {
         name: 'Renamed',
         icon: 'wallet',
         currency: 'EUR',
+        ...capFields,
       }),
     );
     await waitFor(() => expect(mockBack).toHaveBeenCalled());
     expect(useAccountsStore.getState().accounts[0].name).toBe('Renamed');
+  });
+
+  it('prefills the account cap and switch, and a save sends the changed cap and refreshes the caps', async () => {
+    (getSetting as jest.Mock).mockResolvedValue('EUR');
+    (listAccounts as jest.Mock).mockResolvedValue([{ ...account, inGlobalCap: false }]);
+    (listCaps as jest.Mock).mockResolvedValue([
+      { id: 1, accountId: 7, period: 'week', amountCents: 25050 },
+      { id: 2, accountId: 9, period: 'day', amountCents: 100 },
+    ]);
+    (updateAccount as jest.Mock).mockResolvedValue({ ...account, inGlobalCap: false });
+    await renderWithProviders(<EditAccountScreen />);
+
+    const amount = await screen.findByLabelText(en.caps.amountLabel);
+    expect(amount.props.value).toBe('250.50');
+    expect(
+      screen.getByRole('switch', { name: en.caps.countsTowardGlobal }).props.accessibilityState,
+    ).toMatchObject({ checked: false, disabled: false });
+
+    (listCaps as jest.Mock).mockResolvedValue([
+      { id: 1, accountId: 7, period: 'month', amountCents: 30000 },
+    ]);
+    fireEvent.changeText(amount, '300');
+    fireEvent.press(screen.getByText(en.caps.periodMonth));
+    fireEvent.press(screen.getByText(en.accounts.save));
+
+    await waitFor(() =>
+      expect(updateAccount).toHaveBeenCalledWith(7, {
+        name: 'Savings',
+        icon: 'wallet',
+        currency: 'EUR',
+        balance: undefined,
+        inGlobalCap: false,
+        cap: { amount: '300', period: 'month' },
+      }),
+    );
+    await waitFor(() =>
+      expect(useCapsStore.getState().caps).toEqual([
+        { id: 1, accountId: 7, period: 'month', amountCents: 30000 },
+      ]),
+    );
   });
 
   it('asks before changing the currency of an account with transactions, amounts untouched', async () => {
@@ -829,6 +976,7 @@ describe('edit account screen', () => {
         name: 'Savings',
         icon: 'wallet',
         currency: 'USD',
+        ...capFields,
       }),
     );
     await waitFor(() => expect(mockBack).toHaveBeenCalled());

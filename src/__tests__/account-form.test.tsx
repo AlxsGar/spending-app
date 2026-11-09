@@ -1,4 +1,5 @@
 import { fireEvent, screen, waitFor } from '@testing-library/react-native';
+import type { ComponentProps } from 'react';
 import { Platform } from 'react-native';
 
 import { AccountForm } from '@/components/account-form';
@@ -16,10 +17,15 @@ afterEach(() => {
 
 const initial = { name: '', icon: 'bank', currency: 'MXN' };
 
+// The default currency is MXN unless a test says otherwise.
+const TestForm = (props: Omit<ComponentProps<typeof AccountForm>, 'defaultCurrency'>) => (
+  <AccountForm defaultCurrency="MXN" {...props} />
+);
+
 describe('AccountForm', () => {
   it('blocks save with an inline error when the name is blank', async () => {
     const onSubmit = jest.fn().mockResolvedValue(true);
-    await renderWithProviders(<AccountForm initial={initial} onSubmit={onSubmit} />);
+    await renderWithProviders(<TestForm initial={initial} onSubmit={onSubmit} />);
 
     expect(screen.queryByText(en.accounts.errors.nameRequired)).toBeNull();
     fireEvent.changeText(screen.getByLabelText(en.accounts.nameLabel), '   ');
@@ -31,7 +37,7 @@ describe('AccountForm', () => {
 
   it('shows the too-long error', async () => {
     const onSubmit = jest.fn();
-    await renderWithProviders(<AccountForm initial={initial} onSubmit={onSubmit} />);
+    await renderWithProviders(<TestForm initial={initial} onSubmit={onSubmit} />);
     fireEvent.changeText(screen.getByLabelText(en.accounts.nameLabel), 'a'.repeat(41));
     fireEvent.press(screen.getByText(en.accounts.save));
     expect(await screen.findByText(en.accounts.errors.nameTooLong)).toBeTruthy();
@@ -40,28 +46,30 @@ describe('AccountForm', () => {
 
   it('submits the chosen values', async () => {
     const onSubmit = jest.fn().mockResolvedValue(true);
-    await renderWithProviders(<AccountForm initial={initial} onSubmit={onSubmit} />);
+    await renderWithProviders(<TestForm initial={initial} onSubmit={onSubmit} />);
 
     fireEvent.changeText(screen.getByLabelText(en.accounts.nameLabel), 'Wallet');
     fireEvent.press(screen.getByLabelText(en.accounts.icons.cash));
     fireEvent.press(screen.getByText(en.accounts.save));
 
     await waitFor(() =>
-      expect(onSubmit).toHaveBeenCalledWith({ name: 'Wallet', icon: 'cash', currency: 'MXN' }),
+      expect(onSubmit).toHaveBeenCalledWith(
+        expect.objectContaining({ name: 'Wallet', icon: 'cash', currency: 'MXN' }),
+      ),
     );
   });
 
   it('shows a save error when submit fails', async () => {
     const onSubmit = jest.fn().mockResolvedValue(false);
     await renderWithProviders(
-      <AccountForm initial={{ ...initial, name: 'Main' }} onSubmit={onSubmit} />,
+      <TestForm initial={{ ...initial, name: 'Main' }} onSubmit={onSubmit} />,
     );
     fireEvent.press(screen.getByText(en.accounts.save));
     expect(await screen.findByText(en.accounts.saveError)).toBeTruthy();
   });
 
   it('caps the name at 40 and shows the characters used as you type', async () => {
-    await renderWithProviders(<AccountForm initial={initial} onSubmit={jest.fn()} />);
+    await renderWithProviders(<TestForm initial={initial} onSubmit={jest.fn()} />);
     const field = screen.getByLabelText(en.accounts.nameLabel);
     expect(field.props.maxLength).toBe(40);
     expect(screen.getByText('0/40 characters')).toBeTruthy();
@@ -71,7 +79,7 @@ describe('AccountForm', () => {
   });
 
   it('shows the error and the counter together', async () => {
-    await renderWithProviders(<AccountForm initial={initial} onSubmit={jest.fn()} />);
+    await renderWithProviders(<TestForm initial={initial} onSubmit={jest.fn()} />);
     fireEvent.press(screen.getByText(en.accounts.save));
     expect(await screen.findByText(en.accounts.errors.nameRequired)).toBeTruthy();
     expect(screen.getByText('0/40 characters')).toBeTruthy();
@@ -80,7 +88,7 @@ describe('AccountForm', () => {
   it('currency dialog opens, selects and closes', async () => {
     const onSubmit = jest.fn().mockResolvedValue(true);
     await renderWithProviders(
-      <AccountForm initial={{ ...initial, name: 'Main' }} onSubmit={onSubmit} />,
+      <TestForm initial={{ ...initial, name: 'Main' }} onSubmit={onSubmit} />,
     );
     fireEvent.press(screen.getByLabelText(`${en.accounts.currencyLabel}, MXN`));
     expect(await screen.findByText('JPY')).toBeTruthy();
@@ -89,14 +97,16 @@ describe('AccountForm', () => {
 
     fireEvent.press(screen.getByText(en.accounts.save));
     await waitFor(() =>
-      expect(onSubmit).toHaveBeenCalledWith({ name: 'Main', icon: 'bank', currency: 'EUR' }),
+      expect(onSubmit).toHaveBeenCalledWith(
+        expect.objectContaining({ name: 'Main', icon: 'bank', currency: 'EUR' }),
+      ),
     );
   });
 
   describe('currency change confirmation', () => {
     const changeCurrency = async (onSubmit: jest.Mock, transactionCount: number) => {
       await renderWithProviders(
-        <AccountForm
+        <TestForm
           initial={{ ...initial, name: 'Main' }}
           onSubmit={onSubmit}
           transactionCount={transactionCount}
@@ -127,7 +137,9 @@ describe('AccountForm', () => {
       await changeCurrency(onSubmit, 1);
       fireEvent.press(await screen.findByText(en.accounts.currencyChangeConfirm));
       await waitFor(() =>
-        expect(onSubmit).toHaveBeenCalledWith({ name: 'Edited', icon: 'bank', currency: 'EUR' }),
+        expect(onSubmit).toHaveBeenCalledWith(
+          expect.objectContaining({ name: 'Edited', icon: 'bank', currency: 'EUR' }),
+        ),
       );
     });
 
@@ -154,7 +166,7 @@ describe('AccountForm', () => {
     it('saves directly when the currency did not change', async () => {
       const onSubmit = jest.fn().mockResolvedValue(true);
       await renderWithProviders(
-        <AccountForm
+        <TestForm
           initial={{ ...initial, name: 'Main' }}
           onSubmit={onSubmit}
           transactionCount={5}
@@ -169,7 +181,7 @@ describe('AccountForm', () => {
   describe('initial balance (new account)', () => {
     const named = { ...initial, name: 'Main', currency: 'USD' };
     const submitWith = async (amount: string, onSubmit = jest.fn().mockResolvedValue(true)) => {
-      await renderWithProviders(<AccountForm initial={named} onSubmit={onSubmit} />);
+      await renderWithProviders(<TestForm initial={named} onSubmit={onSubmit} />);
       fireEvent.changeText(screen.getByLabelText(en.accounts.initialBalanceLabel), amount);
       fireEvent.press(screen.getByText(en.accounts.save));
       return onSubmit;
@@ -177,26 +189,26 @@ describe('AccountForm', () => {
 
     it('is optional: empty sends no balance at all', async () => {
       const onSubmit = jest.fn().mockResolvedValue(true);
-      await renderWithProviders(<AccountForm initial={named} onSubmit={onSubmit} />);
+      await renderWithProviders(<TestForm initial={named} onSubmit={onSubmit} />);
       fireEvent.press(screen.getByText(en.accounts.save));
       await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
       expect(onSubmit.mock.calls[0][0].balance).toBeUndefined();
     });
 
     it('has no sign toggle', async () => {
-      await renderWithProviders(<AccountForm initial={named} onSubmit={jest.fn()} />);
+      await renderWithProviders(<TestForm initial={named} onSubmit={jest.fn()} />);
       expect(screen.queryByText('Positive')).toBeNull();
       expect(screen.queryByText('Negative')).toBeNull();
     });
 
     it('sends the typed text', async () => {
       const onSubmit = await submitWith('500');
-      await waitFor(() => expect(onSubmit).toHaveBeenCalledWith({ ...named, balance: '500' }));
+      await waitFor(() => expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ ...named, balance: '500' })));
     });
 
     it('sends a negative amount typed with a leading minus', async () => {
       const onSubmit = await submitWith('-200,5');
-      await waitFor(() => expect(onSubmit).toHaveBeenCalledWith({ ...named, balance: '-200,5' }));
+      await waitFor(() => expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ ...named, balance: '-200,5' })));
     });
 
     it.each(['--5', '-5-', '5-', '-', '- 5', '+5'])('blocks %s with an inline error', async (text) => {
@@ -207,7 +219,7 @@ describe('AccountForm', () => {
 
     it('uses a keyboard with a minus key: numbers-and-punctuation on iOS, numeric on Android', async () => {
       jest.replaceProperty(Platform, 'OS', 'ios');
-      const ios = await renderWithProviders(<AccountForm initial={named} onSubmit={jest.fn()} />);
+      const ios = await renderWithProviders(<TestForm initial={named} onSubmit={jest.fn()} />);
       expect(screen.getByLabelText(en.accounts.initialBalanceLabel).props.keyboardType).toBe(
         'numbers-and-punctuation',
       );
@@ -215,7 +227,7 @@ describe('AccountForm', () => {
 
       jest.replaceProperty(Platform, 'OS', 'android');
       await renderWithProviders(
-        <AccountForm initial={named} onSubmit={jest.fn()} currentBalanceCents={100} />,
+        <TestForm initial={named} onSubmit={jest.fn()} currentBalanceCents={100} />,
       );
       expect(screen.getByLabelText(en.accounts.currentBalanceLabel).props.keyboardType).toBe(
         'numeric',
@@ -251,7 +263,7 @@ describe('AccountForm', () => {
     it('JPY rejects decimals on save', async () => {
       const onSubmit = jest.fn();
       await renderWithProviders(
-        <AccountForm initial={{ ...named, currency: 'JPY' }} onSubmit={onSubmit} />,
+        <TestForm initial={{ ...named, currency: 'JPY' }} onSubmit={onSubmit} />,
       );
       fireEvent.changeText(screen.getByLabelText(en.accounts.initialBalanceLabel), '12.50');
       fireEvent.press(screen.getByText(en.accounts.save));
@@ -260,7 +272,7 @@ describe('AccountForm', () => {
     });
 
     it('switching to JPY re-validates a typed "12.50" right away', async () => {
-      await renderWithProviders(<AccountForm initial={named} onSubmit={jest.fn()} />);
+      await renderWithProviders(<TestForm initial={named} onSubmit={jest.fn()} />);
       fireEvent.changeText(screen.getByLabelText(en.accounts.initialBalanceLabel), '12.50');
       expect(screen.queryByText(en.accounts.errors.balanceDecimalsNotAllowed)).toBeNull();
 
@@ -286,7 +298,7 @@ describe('AccountForm', () => {
 
     it('prefills a positive balance without a sign', async () => {
       await renderWithProviders(
-        <AccountForm initial={named} onSubmit={jest.fn()} currentBalanceCents={50000} />,
+        <TestForm initial={named} onSubmit={jest.fn()} currentBalanceCents={50000} />,
       );
       expect(screen.getByLabelText(en.accounts.currentBalanceLabel).props.value).toBe('500.00');
     });
@@ -294,7 +306,7 @@ describe('AccountForm', () => {
     it('is prefilled from the balance with a leading minus, and unchanged sends no balance', async () => {
       const onSubmit = jest.fn().mockResolvedValue(true);
       await renderWithProviders(
-        <AccountForm initial={named} onSubmit={onSubmit} currentBalanceCents={-12550} />,
+        <TestForm initial={named} onSubmit={onSubmit} currentBalanceCents={-12550} />,
       );
       expect(screen.getByLabelText(en.accounts.currentBalanceLabel).props.value).toBe('-125.50');
       fireEvent.press(screen.getByText(en.accounts.save));
@@ -305,10 +317,10 @@ describe('AccountForm', () => {
     it('an untouched field stays unchanged even if the ledger moves while the form is open', async () => {
       const onSubmit = jest.fn().mockResolvedValue(true);
       const { rerender } = await renderWithProviders(
-        <AccountForm initial={named} onSubmit={onSubmit} currentBalanceCents={5000} />,
+        <TestForm initial={named} onSubmit={onSubmit} currentBalanceCents={5000} />,
       );
       // A transaction lands: the live balance is now 60.00, the field still says 50.00.
-      rerender(<AccountForm initial={named} onSubmit={onSubmit} currentBalanceCents={6000} />);
+      rerender(<TestForm initial={named} onSubmit={onSubmit} currentBalanceCents={6000} />);
       expect(screen.getByLabelText(en.accounts.currentBalanceLabel).props.value).toBe('50.00');
       // Typing the same text in another form is still "unchanged".
       fireEvent.changeText(screen.getByLabelText(en.accounts.currentBalanceLabel), '50');
@@ -320,19 +332,19 @@ describe('AccountForm', () => {
     it('flipping the sign on a non-zero balance is a change', async () => {
       const onSubmit = jest.fn().mockResolvedValue(true);
       await renderWithProviders(
-        <AccountForm initial={named} onSubmit={onSubmit} currentBalanceCents={50000} />,
+        <TestForm initial={named} onSubmit={onSubmit} currentBalanceCents={50000} />,
       );
       fireEvent.changeText(screen.getByLabelText(en.accounts.currentBalanceLabel), '-500.00');
       fireEvent.press(screen.getByText(en.accounts.save));
       await waitFor(() =>
-        expect(onSubmit).toHaveBeenCalledWith({ ...named, balance: '-500.00' }),
+        expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ ...named, balance: '-500.00' })),
       );
     });
 
     it('typing "-0" over a balance of 0 is not a change; typing 0 over 500 is', async () => {
       const onSubmit = jest.fn().mockResolvedValue(true);
       const zero = await renderWithProviders(
-        <AccountForm initial={named} onSubmit={onSubmit} currentBalanceCents={0} />,
+        <TestForm initial={named} onSubmit={onSubmit} currentBalanceCents={0} />,
       );
       fireEvent.changeText(screen.getByLabelText(en.accounts.currentBalanceLabel), '-0');
       fireEvent.press(screen.getByText(en.accounts.save));
@@ -341,7 +353,7 @@ describe('AccountForm', () => {
       zero.unmount();
 
       await renderWithProviders(
-        <AccountForm initial={named} onSubmit={onSubmit} currentBalanceCents={50000} />,
+        <TestForm initial={named} onSubmit={onSubmit} currentBalanceCents={50000} />,
       );
       fireEvent.changeText(screen.getByLabelText(en.accounts.currentBalanceLabel), '-0');
       fireEvent.press(screen.getByText(en.accounts.save));
@@ -352,7 +364,7 @@ describe('AccountForm', () => {
     it('does not block saving an unchanged prefill above the maximum', async () => {
       const onSubmit = jest.fn().mockResolvedValue(true);
       await renderWithProviders(
-        <AccountForm
+        <TestForm
           initial={named}
           onSubmit={onSubmit}
           currentBalanceCents={100_000_000_000}
@@ -366,7 +378,7 @@ describe('AccountForm', () => {
     it('an emptied field is an error, not a silent 0', async () => {
       const onSubmit = jest.fn();
       await renderWithProviders(
-        <AccountForm initial={named} onSubmit={onSubmit} currentBalanceCents={500} />,
+        <TestForm initial={named} onSubmit={onSubmit} currentBalanceCents={500} />,
       );
       fireEvent.changeText(screen.getByLabelText(en.accounts.currentBalanceLabel), '');
       fireEvent.press(screen.getByText(en.accounts.save));
@@ -377,7 +389,7 @@ describe('AccountForm', () => {
     it('a JPY switch with the prefill untouched saves; with an edited decimal it errors', async () => {
       const onSubmit = jest.fn().mockResolvedValue(true);
       await renderWithProviders(
-        <AccountForm initial={named} onSubmit={onSubmit} currentBalanceCents={1250} />,
+        <TestForm initial={named} onSubmit={onSubmit} currentBalanceCents={1250} />,
       );
       fireEvent.press(screen.getByLabelText(`${en.accounts.currencyLabel}, USD`));
       await screen.findByText('JPY');
@@ -393,7 +405,7 @@ describe('AccountForm', () => {
   it('currency dialog Cancel keeps the current currency', async () => {
     const onSubmit = jest.fn().mockResolvedValue(true);
     await renderWithProviders(
-      <AccountForm initial={{ ...initial, name: 'Main' }} onSubmit={onSubmit} />,
+      <TestForm initial={{ ...initial, name: 'Main' }} onSubmit={onSubmit} />,
     );
     fireEvent.press(screen.getByLabelText(`${en.accounts.currencyLabel}, MXN`));
     await screen.findByText('JPY');
@@ -402,7 +414,114 @@ describe('AccountForm', () => {
 
     fireEvent.press(screen.getByText(en.accounts.save));
     await waitFor(() =>
-      expect(onSubmit).toHaveBeenCalledWith({ name: 'Main', icon: 'bank', currency: 'MXN' }),
+      expect(onSubmit).toHaveBeenCalledWith(
+        expect.objectContaining({ name: 'Main', icon: 'bank', currency: 'MXN' }),
+      ),
     );
+  });
+
+  describe('spending cap fields', () => {
+    const named = { ...initial, name: 'Main' };
+    const toggle = () => screen.getByRole('switch', { name: en.caps.countsTowardGlobal });
+
+    it('start empty with the monthly period, and the switch on, and a save sends them', async () => {
+      const onSubmit = jest.fn().mockResolvedValue(true);
+      await renderWithProviders(<TestForm initial={named} onSubmit={onSubmit} />);
+      expect(screen.getByLabelText(en.caps.amountLabel).props.value).toBe('');
+      expect(toggle().props.accessibilityState).toMatchObject({ checked: true, disabled: false });
+      fireEvent.press(screen.getByText(en.accounts.save));
+      await waitFor(() =>
+        expect(onSubmit).toHaveBeenCalledWith(
+          expect.objectContaining({
+            inGlobalCap: true,
+            cap: { amount: '', period: 'month' },
+          }),
+        ),
+      );
+    });
+
+    it('sends the typed amount, the chosen period and the switch turned off', async () => {
+      const onSubmit = jest.fn().mockResolvedValue(true);
+      await renderWithProviders(<TestForm initial={named} onSubmit={onSubmit} />);
+      fireEvent.changeText(screen.getByLabelText(en.caps.amountLabel), '1500.50');
+      fireEvent.press(screen.getByText(en.caps.periodDay));
+      fireEvent.press(toggle());
+      expect(toggle().props.accessibilityState.checked).toBe(false);
+      fireEvent.press(screen.getByText(en.accounts.save));
+      await waitFor(() =>
+        expect(onSubmit).toHaveBeenCalledWith(
+          expect.objectContaining({
+            inGlobalCap: false,
+            cap: { amount: '1500.50', period: 'day' },
+          }),
+        ),
+      );
+    });
+
+    it('prefill an existing cap and switch (edit)', async () => {
+      await renderWithProviders(
+        <TestForm
+          initial={{ ...named, inGlobalCap: false, cap: { amount: '250', period: 'week' } }}
+          onSubmit={jest.fn()}
+          currentBalanceCents={0}
+        />,
+      );
+      expect(screen.getByLabelText(en.caps.amountLabel).props.value).toBe('250');
+      expect(toggle().props.accessibilityState.checked).toBe(false);
+    });
+
+    it('blocks the save with an inline error for a bad amount; empty is fine', async () => {
+      const onSubmit = jest.fn().mockResolvedValue(true);
+      await renderWithProviders(<TestForm initial={named} onSubmit={onSubmit} />);
+      fireEvent.changeText(screen.getByLabelText(en.caps.amountLabel), '0');
+      expect(screen.queryByText(en.caps.errors.capNotPositive)).toBeNull();
+      fireEvent.press(screen.getByText(en.accounts.save));
+      expect(await screen.findByText(en.caps.errors.capNotPositive)).toBeTruthy();
+      expect(onSubmit).not.toHaveBeenCalled();
+      fireEvent.changeText(screen.getByLabelText(en.caps.amountLabel), '');
+      fireEvent.press(screen.getByText(en.accounts.save));
+      await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
+    });
+
+    it('disables the switch with the reason for an account in another currency, and follows the currency live', async () => {
+      const onSubmit = jest.fn().mockResolvedValue(true);
+      await renderWithProviders(
+        <TestForm initial={{ ...named, currency: 'USD', inGlobalCap: true }} onSubmit={onSubmit} />,
+      );
+      const reason = en.caps.globalCurrencyReason.replace('{{currency}}', 'MXN');
+      expect(screen.getByText(reason)).toBeTruthy();
+      // Disabled, and shown off although the stored flag is on.
+      expect(toggle().props.accessibilityState).toMatchObject({ checked: false, disabled: true });
+      fireEvent.press(toggle());
+      expect(toggle().props.accessibilityState.checked).toBe(false);
+
+      // Switching to the default currency enables it (back to the stored value).
+      fireEvent.press(screen.getByLabelText(`${en.accounts.currencyLabel}, USD`));
+      await screen.findByText('JPY');
+      fireEvent.press(screen.getByText('MXN'));
+      await waitFor(() => expect(screen.queryByText('JPY')).toBeNull());
+      expect(screen.queryByText(reason)).toBeNull();
+      expect(toggle().props.accessibilityState).toMatchObject({ checked: true, disabled: false });
+
+      // And to another currency again: disabled with the reason.
+      fireEvent.press(screen.getByLabelText(`${en.accounts.currencyLabel}, MXN`));
+      await screen.findByText('JPY');
+      fireEvent.press(screen.getByText('EUR'));
+      await waitFor(() => expect(screen.queryByText('JPY')).toBeNull());
+      expect(screen.getByText(reason)).toBeTruthy();
+      expect(toggle().props.accessibilityState.disabled).toBe(true);
+    });
+
+    it('a cap with decimals shows an error as soon as the currency becomes JPY', async () => {
+      await renderWithProviders(
+        <TestForm initial={named} onSubmit={jest.fn()} />,
+      );
+      fireEvent.changeText(screen.getByLabelText(en.caps.amountLabel), '10.50');
+      expect(screen.queryByText(en.caps.errors.capDecimalsNotAllowed)).toBeNull();
+      fireEvent.press(screen.getByLabelText(`${en.accounts.currencyLabel}, MXN`));
+      await screen.findByText('JPY');
+      fireEvent.press(screen.getByText('JPY'));
+      expect(await screen.findByText(en.caps.errors.capDecimalsNotAllowed)).toBeTruthy();
+    });
   });
 });

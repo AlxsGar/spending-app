@@ -40,10 +40,11 @@ const mockDb = {
   }),
   runAsync: jest.fn(async (sql: string, ...args: unknown[]) => {
     if (sql.startsWith('INSERT')) {
-      const [name, icon, currency, createdAt, anchorCents, anchorAt] = args as [
+      const [name, icon, currency, inGlobalCap, createdAt, anchorCents, anchorAt] = args as [
         string,
         string,
         string,
+        number,
         string,
         number,
         string | null,
@@ -54,7 +55,7 @@ const mockDb = {
         name,
         icon,
         currency,
-        in_global_cap: 1,
+        in_global_cap: inGlobalCap,
         created_at: createdAt,
         balance_anchor_cents: anchorCents,
         balance_anchor_at: anchorAt,

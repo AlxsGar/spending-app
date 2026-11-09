@@ -35,6 +35,7 @@ export default function NewAccountScreen() {
       ) : (
         <AccountForm
           initial={{ name: '', icon: ACCOUNT_ICONS[0], currency }}
+          defaultCurrency={currency}
           onSubmit={async (input) => {
             const ok = await add(input);
             if (ok) {

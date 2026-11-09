@@ -1,6 +1,8 @@
 import { getSetting, initDb } from './db';
 import { parseAmountToCents } from './money';
 import type { AmountParseError } from './money';
+import { parseCapInput, validateCapInput, writeCap } from './soft-caps';
+import type { CapInput, CapValidationCode } from './soft-caps';
 import { serialized } from './write-queue';
 
 export const ACCOUNT_ICONS = [
@@ -58,6 +60,12 @@ export type AccountInput = {
   // update: set only when the user changed the current balance; omitted keeps
   // the existing balance and anchor untouched.
   balance?: string;
+  // Whether the account's expenses count toward the global cap. On create,
+  // omitted means yes; on update, omitted leaves it as it is.
+  inGlobalCap?: boolean;
+  // The account's own cap, in the account's currency. Omitted leaves the cap
+  // alone (nothing on create, unchanged on update); an empty amount removes it.
+  cap?: CapInput;
 };
 
 export type BalanceValidationCode =
@@ -72,7 +80,8 @@ export type AccountValidationCode =
   | 'nameTooLong'
   | 'invalidIcon'
   | 'invalidCurrency'
-  | BalanceValidationCode;
+  | BalanceValidationCode
+  | CapValidationCode;
 
 export class AccountValidationError extends Error {
   code: AccountValidationCode;
@@ -154,7 +163,9 @@ export function validateAccountInput(
   if (name.length > NAME_MAX_LENGTH) return 'nameTooLong';
   if (!isAccountIcon(input.icon)) return 'invalidIcon';
   if (!isCurrency(input.currency)) return 'invalidCurrency';
-  return validateBalance(input.balance, input.currency, mode);
+  const balanceCode = validateBalance(input.balance, input.currency, mode);
+  if (balanceCode) return balanceCode;
+  return input.cap ? validateCapInput(input.cap, input.currency) : null;
 }
 
 function parse(
@@ -166,6 +177,8 @@ function parse(
   currency: Currency;
   // Signed cents, or undefined when there is no balance to write.
   balanceCents: number | undefined;
+  // undefined: leave the cap alone; null: remove it; otherwise set it.
+  cap: ReturnType<typeof parseCapInput> | undefined;
 } {
   const code = validateAccountInput(input, mode);
   if (code) throw new AccountValidationError(code);
@@ -180,6 +193,7 @@ function parse(
     icon: input.icon as AccountIcon,
     currency,
     balanceCents,
+    cap: input.cap ? parseCapInput(input.cap, currency) : undefined,
   };
 }
 
@@ -214,27 +228,44 @@ export async function getAccount(id: number): Promise<Account | null> {
 }
 
 export async function createAccount(input: AccountInput): Promise<Account> {
-  const { name, icon, currency, balanceCents } = parse(input, 'create');
+  const { name, icon, currency, balanceCents, cap } = parse(input, 'create');
+  const inGlobalCap = input.inGlobalCap ?? true;
   const createdAt = new Date().toISOString();
   // Empty or 0 means no balance: no anchor. Otherwise it counts from creation.
   const anchorCents = balanceCents ?? 0;
   const anchorAt = anchorCents === 0 ? null : createdAt;
-  const db = await initDb();
-  const result = await db.runAsync(
-    'INSERT INTO accounts (name, icon, currency, in_global_cap, created_at, balance_anchor_cents, balance_anchor_at) VALUES (?, ?, ?, 1, ?, ?, ?)',
-    name,
-    icon,
-    currency,
-    createdAt,
-    anchorCents,
-    anchorAt,
-  );
+  const insert = (db: Awaited<ReturnType<typeof initDb>>) =>
+    db.runAsync(
+      'INSERT INTO accounts (name, icon, currency, in_global_cap, created_at, balance_anchor_cents, balance_anchor_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      name,
+      icon,
+      currency,
+      inGlobalCap ? 1 : 0,
+      createdAt,
+      anchorCents,
+      anchorAt,
+    );
+  let id: number;
+  if (cap) {
+    // The account and its cap are written together, or not at all.
+    id = await serialized(async () => {
+      const db = await initDb();
+      let created = 0;
+      await db.withTransactionAsync(async () => {
+        created = (await insert(db)).lastInsertRowId;
+        await writeCap(db, created, cap);
+      });
+      return created;
+    });
+  } else {
+    id = (await insert(await initDb())).lastInsertRowId;
+  }
   return {
-    id: result.lastInsertRowId,
+    id,
     name,
     icon,
     currency,
-    inGlobalCap: true,
+    inGlobalCap,
     createdAt,
     balanceAnchorCents: anchorCents,
     balanceAnchorAt: anchorAt,
@@ -248,27 +279,37 @@ export async function updateAccount(
   input: AccountInput,
   now: Date = new Date(),
 ): Promise<Account> {
-  const { name, icon, currency, balanceCents } = parse(input, 'update');
+  const { name, icon, currency, balanceCents, cap } = parse(input, 'update');
   const db = await initDb();
-  const result =
-    balanceCents === undefined
-      ? await db.runAsync(
-          'UPDATE accounts SET name = ?, icon = ?, currency = ? WHERE id = ?',
-          name,
-          icon,
-          currency,
-          id,
-        )
-      : await db.runAsync(
-          'UPDATE accounts SET name = ?, icon = ?, currency = ?, balance_anchor_cents = ?, balance_anchor_at = ? WHERE id = ?',
-          name,
-          icon,
-          currency,
-          balanceCents,
-          now.toISOString(),
-          id,
-        );
-  if (result.changes === 0) throw new Error(`Account ${id} not found`);
+  const update = (conn: typeof db) => {
+    const sets = ['name = ?', 'icon = ?', 'currency = ?'];
+    const args: (string | number)[] = [name, icon, currency];
+    if (balanceCents !== undefined) {
+      sets.push('balance_anchor_cents = ?', 'balance_anchor_at = ?');
+      args.push(balanceCents, now.toISOString());
+    }
+    if (input.inGlobalCap !== undefined) {
+      sets.push('in_global_cap = ?');
+      args.push(input.inGlobalCap ? 1 : 0);
+    }
+    return conn.runAsync(`UPDATE accounts SET ${sets.join(', ')} WHERE id = ?`, ...args, id);
+  };
+  let changes: number;
+  if (cap !== undefined) {
+    // The account and its cap are written together, or not at all.
+    changes = await serialized(async () => {
+      let changed = 0;
+      await db.withTransactionAsync(async () => {
+        changed = (await update(db)).changes;
+        if (changed === 0) throw new Error(`Account ${id} not found`);
+        await writeCap(db, id, cap);
+      });
+      return changed;
+    });
+  } else {
+    changes = (await update(db)).changes;
+  }
+  if (changes === 0) throw new Error(`Account ${id} not found`);
   const updated = await getAccount(id);
   if (!updated) throw new Error(`Account ${id} not found`);
   return updated;
