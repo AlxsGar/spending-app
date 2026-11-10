@@ -239,6 +239,11 @@ export async function setSetting(key: string, value: string): Promise<void> {
   );
 }
 
+export async function deleteSetting(key: string): Promise<void> {
+  const db = await initDb();
+  await db.runAsync('DELETE FROM settings WHERE key = ?', key);
+}
+
 export function resetDbForTests(): void {
   dbPromise = null;
 }

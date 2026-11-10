@@ -1,11 +1,12 @@
-import { loadLanguage, resolveLanguage } from '@/services/language';
+import { getDeviceLanguage, removeLegacyLanguageSetting, resolveLanguage } from '@/services/language';
 
-const mockGetSetting = jest.fn();
 const mockGetLocales = jest.fn();
+const mockDeleteSetting = jest.fn();
+const mockGetSetting = jest.fn();
 
 jest.mock('@/services/db', () => ({
   getSetting: (key: string) => mockGetSetting(key),
-  setSetting: jest.fn(),
+  deleteSetting: (key: string) => mockDeleteSetting(key),
 }));
 
 jest.mock('expo-localization', () => ({
@@ -13,27 +14,80 @@ jest.mock('expo-localization', () => ({
 }));
 
 describe('resolveLanguage', () => {
-  it('uses the device language when it is es', () => {
-    expect(resolveLanguage(null, 'es')).toBe('es');
+  it('es gives es', () => {
+    expect(resolveLanguage('es')).toBe('es');
   });
 
-  it('falls back to en for unsupported device languages', () => {
-    expect(resolveLanguage(null, 'fr')).toBe('en');
+  it.each(['en', 'fr', 'pt', 'de'])('%s gives en', (code) => {
+    expect(resolveLanguage(code)).toBe('en');
   });
 
-  it('prefers the stored value over the device', () => {
-    expect(resolveLanguage('en', 'es')).toBe('en');
-    expect(resolveLanguage('es', 'fr')).toBe('es');
+  it('a missing code gives en', () => {
+    expect(resolveLanguage(undefined)).toBe('en');
+    expect(resolveLanguage(null)).toBe('en');
   });
 });
 
-describe('loadLanguage', () => {
-  it('reads the stored value and the device locale', async () => {
-    mockGetLocales.mockReturnValue([{ languageCode: 'es' }]);
-    mockGetSetting.mockResolvedValue(null);
-    expect(await loadLanguage()).toBe('es');
+describe('getDeviceLanguage', () => {
+  it('uses the language code of the first preferred locale', () => {
+    mockGetLocales.mockReturnValue([
+      { languageTag: 'es-MX', languageCode: 'es' },
+      { languageTag: 'en-US', languageCode: 'en' },
+    ]);
+    expect(getDeviceLanguage()).toBe('es');
+    mockGetLocales.mockReturnValue([{ languageTag: 'en-US', languageCode: 'en' }]);
+    expect(getDeviceLanguage()).toBe('en');
+  });
 
-    mockGetSetting.mockResolvedValue('en');
-    expect(await loadLanguage()).toBe('en');
+  it.each([
+    ['en-US', 'en'],
+    ['fr-FR', 'en'],
+    ['pt-BR', 'en'],
+    ['de', 'en'],
+    ['es', 'es'],
+    ['es-MX', 'es'],
+    ['es-US', 'es'],
+    ['es-ES', 'es'],
+  ])('%s gives %s', (tag, expected) => {
+    mockGetLocales.mockReturnValue([{ languageTag: tag, languageCode: tag.split('-')[0] }]);
+    expect(getDeviceLanguage()).toBe(expected);
+  });
+
+  it('gives en when reading the locales throws', () => {
+    mockGetLocales.mockImplementation(() => {
+      throw new Error('native');
+    });
+    expect(getDeviceLanguage()).toBe('en');
+    mockGetLocales.mockReset();
+  });
+
+  it('an empty or undefined locale list gives en', () => {
+    mockGetLocales.mockReturnValue([]);
+    expect(getDeviceLanguage()).toBe('en');
+    mockGetLocales.mockReturnValue(undefined);
+    expect(getDeviceLanguage()).toBe('en');
+  });
+});
+
+describe('removeLegacyLanguageSetting', () => {
+  beforeEach(() => {
+    mockDeleteSetting.mockReset();
+    mockGetSetting.mockReset();
+  });
+
+  it('deletes the old language row and never reads it', async () => {
+    mockDeleteSetting.mockResolvedValue(undefined);
+    await removeLegacyLanguageSetting();
+    expect(mockDeleteSetting).toHaveBeenCalledWith('language');
+    expect(mockGetSetting).not.toHaveBeenCalled();
+  });
+
+  it('ignores a failed delete and logs it once', async () => {
+    mockDeleteSetting.mockRejectedValue(new Error('disk'));
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    await expect(removeLegacyLanguageSetting()).resolves.toBeUndefined();
+    await expect(removeLegacyLanguageSetting()).resolves.toBeUndefined();
+    expect(warn).toHaveBeenCalledTimes(1);
+    warn.mockRestore();
   });
 });

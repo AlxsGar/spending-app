@@ -4,20 +4,15 @@ import { ScrollView } from 'react-native';
 import { DefaultCurrencySetting } from '@/components/default-currency-setting';
 import { GlobalCapSetting } from '@/components/global-cap-setting';
 import { ReminderChips } from '@/components/reminder-chips';
-import { AppButton, AppText, Screen, SegmentedControl, SettingRow } from '@/components/ui';
+import { AppButton, AppText, Screen, SettingRow } from '@/components/ui';
 // Development tool: a test reminder in 15 seconds (see src/dev/test-reminder.ts).
 import { scheduleTestReminder } from '@/dev/test-reminder';
-import type { Language } from '@/i18n';
 import { openNotificationSettings } from '@/services/notifications';
 import { useDefaultRemindersStore, useDefaultReminders } from '@/stores/default-reminders';
-import { useLanguageStore } from '@/stores/language-store';
 import { useNotificationPermission } from '@/stores/notification-permission';
 
 export default function SettingsScreen() {
   const { t } = useTranslation();
-  const language = useLanguageStore((state) => state.language);
-  const saveError = useLanguageStore((state) => state.saveError);
-  const setLanguage = useLanguageStore((state) => state.setLanguage);
   const defaultReminders = useDefaultReminders();
   const setDefaultReminders = useDefaultRemindersStore((state) => state.set);
   const remindersSaveError = useDefaultRemindersStore((state) => state.saveError);
@@ -26,19 +21,6 @@ export default function SettingsScreen() {
   return (
     <Screen>
       <ScrollView>
-        <SettingRow
-          label={t('settings.language')}
-          errorText={saveError ? t('settings.saveError') : undefined}
-        >
-          <SegmentedControl<Language>
-            value={language}
-            onChange={(next) => void setLanguage(next)}
-            options={[
-              { value: 'en', label: t('settings.english') },
-              { value: 'es', label: t('settings.spanish') },
-            ]}
-          />
-        </SettingRow>
         <DefaultCurrencySetting />
         <SettingRow
           label={t('settings.defaultReminders')}

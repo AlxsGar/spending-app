@@ -1,58 +1,81 @@
 import i18n from '@/i18n';
 import { useLanguageStore } from '@/stores/language-store';
 
-const mockLoad = jest.fn();
-const mockSave = jest.fn();
+let mockDevice: 'en' | 'es' = 'en';
+const mockRemove = jest.fn();
 
+const mockInitDb = jest.fn();
+jest.mock('@/services/db', () => ({ initDb: () => mockInitDb() }));
 jest.mock('@/services/language', () => ({
-  loadLanguage: () => mockLoad(),
-  saveLanguage: (language: string) => mockSave(language),
+  getDeviceLanguage: () => mockDevice,
+  removeLegacyLanguageSetting: () => mockRemove(),
 }));
 
 describe('language store', () => {
   beforeEach(async () => {
-    mockLoad.mockReset();
-    mockSave.mockReset();
+    mockDevice = 'en';
+    mockRemove.mockReset().mockResolvedValue(undefined);
+    mockInitDb.mockReset().mockResolvedValue(undefined);
     await i18n.changeLanguage('en');
-    useLanguageStore.setState({
-      language: 'en',
-      ready: false,
-      error: false,
-      saveError: false,
-    });
+    useLanguageStore.setState({ language: 'en', ready: false, error: false });
   });
 
-  it('setLanguage changes i18n and saves', async () => {
-    mockSave.mockResolvedValue(undefined);
-    await useLanguageStore.getState().setLanguage('es');
-    expect(i18n.language).toBe('es');
-    expect(mockSave).toHaveBeenCalledWith('es');
-    expect(useLanguageStore.getState().language).toBe('es');
-    expect(useLanguageStore.getState().saveError).toBe(false);
-  });
-
-  it('rolls back and flags an error when saving fails', async () => {
-    mockSave.mockRejectedValue(new Error('disk'));
-    await expect(useLanguageStore.getState().setLanguage('es')).resolves.toBeUndefined();
-    expect(i18n.language).toBe('en');
-    expect(useLanguageStore.getState().language).toBe('en');
-    expect(useLanguageStore.getState().saveError).toBe(true);
-  });
-
-  it('init sets ready on success', async () => {
-    mockLoad.mockResolvedValue('es');
-    await useLanguageStore.getState().init();
-    const state = useLanguageStore.getState();
-    expect(state.ready).toBe(true);
-    expect(state.error).toBe(false);
-    expect(state.language).toBe('es');
-  });
-
-  it('init sets error on failure', async () => {
-    mockLoad.mockRejectedValue(new Error('db'));
+  it('init flags an error, in the device language, when the database does not open, and skips the cleanup', async () => {
+    mockDevice = 'es';
+    mockInitDb.mockRejectedValue(new Error('db'));
     await useLanguageStore.getState().init();
     const state = useLanguageStore.getState();
     expect(state.ready).toBe(true);
     expect(state.error).toBe(true);
+    expect(i18n.language).toBe('es');
+    expect(mockRemove).not.toHaveBeenCalled();
+  });
+
+  it('init clears a previous error when the database opens on retry', async () => {
+    mockInitDb.mockRejectedValueOnce(new Error('db'));
+    await useLanguageStore.getState().init();
+    expect(useLanguageStore.getState().error).toBe(true);
+    await useLanguageStore.getState().init();
+    expect(useLanguageStore.getState().error).toBe(false);
+    expect(useLanguageStore.getState().ready).toBe(true);
+  });
+
+  it('init uses the device language, clears the old setting and becomes ready', async () => {
+    mockDevice = 'es';
+    await useLanguageStore.getState().init();
+    const state = useLanguageStore.getState();
+    expect(state.language).toBe('es');
+    expect(state.ready).toBe(true);
+    expect(i18n.language).toBe('es');
+    expect(mockRemove).toHaveBeenCalledTimes(1);
+  });
+
+  it('init still becomes ready when applying the language fails', async () => {
+    mockDevice = 'es';
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    const change = jest.spyOn(i18n, 'changeLanguage').mockRejectedValueOnce(new Error('i18n'));
+    await expect(useLanguageStore.getState().init()).resolves.toBeUndefined();
+    expect(useLanguageStore.getState().ready).toBe(true);
+    expect(mockRemove).toHaveBeenCalledTimes(1);
+    change.mockRestore();
+    warn.mockRestore();
+  });
+
+  it('syncWithDevice switches i18next and the store when the device language changed', async () => {
+    mockDevice = 'es';
+    await useLanguageStore.getState().syncWithDevice();
+    expect(i18n.language).toBe('es');
+    expect(useLanguageStore.getState().language).toBe('es');
+  });
+
+  it('syncWithDevice changes nothing when the language is the same', async () => {
+    const change = jest.spyOn(i18n, 'changeLanguage');
+    const seen: string[] = [];
+    const unsubscribe = useLanguageStore.subscribe((state) => seen.push(state.language));
+    await useLanguageStore.getState().syncWithDevice();
+    unsubscribe();
+    expect(change).not.toHaveBeenCalled();
+    expect(seen).toEqual([]);
+    change.mockRestore();
   });
 });

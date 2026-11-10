@@ -322,10 +322,6 @@ export const es: Translations = {
     emptyAction: 'Agregar transacción',
   },
   settings: {
-    language: 'Idioma',
-    english: 'English',
-    spanish: 'Español',
-    saveError: 'No se pudo guardar tu idioma. Inténtalo de nuevo.',
     defaultCurrency: 'Moneda predeterminada',
     defaultCurrencySaveError: 'No se pudo guardar tu moneda predeterminada. Inténtalo de nuevo.',
     defaultCurrencyCheckError: 'No se pudieron revisar tus datos. Inténtalo de nuevo.',

@@ -2,46 +2,48 @@ import { create } from 'zustand';
 
 import i18n, { DEFAULT_LANGUAGE } from '@/i18n';
 import type { Language } from '@/i18n';
-import { loadLanguage, saveLanguage } from '@/services/language';
+import { initDb } from '@/services/db';
+import { getDeviceLanguage, removeLegacyLanguageSetting } from '@/services/language';
 
 type LanguageState = {
   language: Language;
   ready: boolean;
   error: boolean;
-  saveError: boolean;
   init: () => Promise<void>;
-  setLanguage: (language: Language) => Promise<void>;
+  // Re-reads the device language; switches i18next and the store when it
+  // changed. Called at launch and whenever the app returns to the foreground.
+  syncWithDevice: () => Promise<void>;
 };
 
 export const useLanguageStore = create<LanguageState>((set, get) => ({
   language: DEFAULT_LANGUAGE,
   ready: false,
   error: false,
-  saveError: false,
   init: async () => {
     set({ ready: false, error: false });
     try {
-      const language = await loadLanguage();
-      await i18n.changeLanguage(language);
-      set({ language, ready: true, error: false });
-    } catch {
-      set({ ready: true, error: true });
+      await get().syncWithDevice();
+    } catch (error) {
+      // Keep the current language; the app must still start.
+      console.warn('[language] could not apply the device language:', error);
     }
-  },
-  setLanguage: async (language) => {
-    const previous = get().language;
+    // The app data must open (and migrate) before anything else can work. The
+    // language is already set, so the error screen shows in it.
     try {
-      await i18n.changeLanguage(language);
-      set({ language, saveError: false });
-      await saveLanguage(language);
+      await initDb();
     } catch {
-      // Roll back so the language in memory matches what is stored.
-      try {
-        await i18n.changeLanguage(previous);
-      } catch {
-        // Nothing more to do; state below still reflects the stored value.
-      }
-      set({ language: previous, saveError: true });
+      // initDb already logged it; Retry runs init again.
+      set({ ready: true, error: true });
+      return;
     }
+    // The language is no longer stored; clear the old row (best effort).
+    await removeLegacyLanguageSetting();
+    set({ ready: true, error: false });
+  },
+  syncWithDevice: async () => {
+    const next = getDeviceLanguage();
+    if (next === get().language && i18n.language === next) return;
+    await i18n.changeLanguage(next);
+    set({ language: next });
   },
 }));

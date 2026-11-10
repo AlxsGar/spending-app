@@ -324,10 +324,6 @@ export const en = {
     emptyAction: 'Add transaction',
   },
   settings: {
-    language: 'Language',
-    english: 'English',
-    spanish: 'Español',
-    saveError: 'Could not save your language. Try again.',
     defaultCurrency: 'Default currency',
     defaultCurrencySaveError: 'Could not save your default currency. Try again.',
     defaultCurrencyCheckError: 'Could not check your data. Try again.',

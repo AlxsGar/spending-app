@@ -10,7 +10,7 @@ import { renderWithProviders } from '@/test/render';
 
 const mockNavigate = jest.fn();
 let mockNavigationKey: string | undefined = 'root';
-let mockLoadLanguage: () => Promise<string>;
+let mockLoadLanguage: () => Promise<void>;
 
 jest.mock('expo-router', () => {
   const { Text } = jest.requireActual('react-native');
@@ -31,9 +31,12 @@ jest.mock('@/services/accounts', () => ({
   ...jest.requireActual('@/services/accounts'),
   getDefaultCurrency: jest.fn().mockResolvedValue('MXN'),
 }));
+jest.mock('@/services/db', () => ({ initDb: jest.fn().mockResolvedValue(undefined) }));
+// The gate's start waits for the old-language-setting cleanup; the test holds it
+// open to keep the app "loading". The device language stays English.
 jest.mock('@/services/language', () => ({
-  loadLanguage: () => mockLoadLanguage(),
-  saveLanguage: jest.fn(),
+  getDeviceLanguage: () => 'en',
+  removeLegacyLanguageSetting: () => mockLoadLanguage(),
 }));
 
 const sync = requestReminderSync as jest.Mock;
@@ -42,9 +45,9 @@ let appStateListener: (state: string) => void = () => {};
 beforeEach(() => {
   jest.clearAllMocks();
   mockNavigationKey = 'root';
-  mockLoadLanguage = () => Promise.resolve('en');
+  mockLoadLanguage = () => Promise.resolve();
   useNotificationTapStore.setState({ pending: null });
-  useLanguageStore.setState({ language: 'en', ready: false, error: false });
+  useLanguageStore.setState({ language: 'en', ready: false });
   jest.spyOn(AppState, 'addEventListener').mockImplementation(((
     _type: string,
     listener: (state: string) => void,
@@ -98,14 +101,14 @@ describe('NotificationHost: tap routing', () => {
   });
 
   it('on a cold start waits behind the gate until the app data is loaded', async () => {
-    let finish: (value: string) => void = () => {};
+    let finish: () => void = () => {};
     mockLoadLanguage = () => new Promise((resolve) => (finish = resolve));
     useNotificationTapStore.getState().push(tap);
     await renderWithProviders(<AppGate />);
     // Still loading: nothing may navigate yet, the tap is queued.
     expect(mockNavigate).not.toHaveBeenCalled();
     expect(useNotificationTapStore.getState().pending).not.toBeNull();
-    await act(async () => finish('en'));
+    await act(async () => finish());
     await waitFor(() => expect(mockNavigate).toHaveBeenCalledTimes(1));
   });
 });

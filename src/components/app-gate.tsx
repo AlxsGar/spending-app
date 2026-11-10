@@ -1,6 +1,7 @@
 import { Stack } from 'expo-router';
 import { useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
+import { AppState } from 'react-native';
 
 import { CapSnackbarHost } from '@/components/cap-snackbar-host';
 import { CapsDialogHost } from '@/components/caps-exceeded-dialog';
@@ -19,6 +20,19 @@ export function AppGate() {
   useEffect(() => {
     void init();
   }, [init]);
+
+  // The app follows the device language: re-check when it returns to the
+  // foreground (the user may have changed it in the system settings).
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state !== 'active') return;
+      useLanguageStore
+        .getState()
+        .syncWithDevice()
+        .catch((error) => console.warn('[language] could not apply the device language:', error));
+    });
+    return () => subscription.remove();
+  }, []);
 
   // Read once at start, in the background; consumers wait or use the MXN
   // fallback until it arrives (see useDefaultCurrency).

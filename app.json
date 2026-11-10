@@ -30,7 +30,12 @@
         }
       ],
       "expo-sqlite",
-      "expo-localization",
+      [
+        "expo-localization",
+        {
+          "supportedLocales": ["en", "es"]
+        }
+      ],
       [
         "expo-notifications",
         {

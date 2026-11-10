@@ -1,31 +1,42 @@
 import { getLocales } from 'expo-localization';
 
-import { DEFAULT_LANGUAGE, LANGUAGES } from '@/i18n';
+import { DEFAULT_LANGUAGE } from '@/i18n';
 import type { Language } from '@/i18n';
 
-import { getSetting, setSetting } from './db';
+import { deleteSetting } from './db';
 
-const LANGUAGE_KEY = 'language';
+// The setting the app used before it followed the device language (slice 9c).
+const LEGACY_LANGUAGE_KEY = 'language';
 
-export function isLanguage(value: string | null | undefined): value is Language {
-  return LANGUAGES.includes(value as Language);
+// Any Spanish variant (es, es-MX, es-US, es-ES...) gives Spanish; anything
+// else, or a missing code, gives English.
+export function resolveLanguage(deviceCode: string | null | undefined): Language {
+  return deviceCode?.toLowerCase() === 'es' ? 'es' : DEFAULT_LANGUAGE;
 }
 
-export function resolveLanguage(
-  stored: string | null | undefined,
-  deviceCode: string | null | undefined,
-): Language {
-  if (isLanguage(stored)) return stored;
-  if (isLanguage(deviceCode)) return deviceCode;
-  return DEFAULT_LANGUAGE;
+// The device's preferred locale (first in the list). With a per-app language
+// chosen in the system settings, the system reports it first.
+export function getDeviceLanguage(): Language {
+  let code: string | null | undefined;
+  try {
+    code = getLocales()[0]?.languageCode;
+  } catch {
+    code = undefined;
+  }
+  return resolveLanguage(code);
 }
 
-export async function loadLanguage(): Promise<Language> {
-  const stored = await getSetting(LANGUAGE_KEY);
-  const deviceCode = getLocales()[0]?.languageCode;
-  return resolveLanguage(stored, deviceCode);
-}
+let warned = false;
 
-export async function saveLanguage(language: Language): Promise<void> {
-  await setSetting(LANGUAGE_KEY, language);
+// Removes the old stored `language` row. Best effort: a failure is ignored
+// and logged at most once.
+export async function removeLegacyLanguageSetting(): Promise<void> {
+  try {
+    await deleteSetting(LEGACY_LANGUAGE_KEY);
+  } catch (error) {
+    if (!warned) {
+      warned = true;
+      console.warn('[language] could not remove the old language setting:', error);
+    }
+  }
 }

@@ -55,10 +55,6 @@ jest.mock('@/services/soft-caps', () => ({
   listCaps: jest.fn().mockResolvedValue([]),
   saveGlobalCap: jest.fn().mockResolvedValue(undefined),
 }));
-jest.mock('@/services/language', () => ({
-  loadLanguage: jest.fn(),
-  saveLanguage: jest.fn(),
-}));
 
 const account = {
   id: 7,
@@ -471,6 +467,14 @@ describe('tab screens', () => {
     expect(screen.getByLabelText(en.fab.addTransaction)).toBeTruthy();
   });
 
+  it('Settings has no language row (the app follows the device language)', async () => {
+    await renderWithProviders(<SettingsScreen />);
+    expect(screen.queryByText('Language')).toBeNull();
+    expect(screen.queryByText('Idioma')).toBeNull();
+    expect(screen.queryByText('English')).toBeNull();
+    expect(screen.queryByText('Español')).toBeNull();
+  });
+
   it('Home, Accounts and Movements show the FAB', async () => {
     for (const Screen of [HomeScreen, AccountsScreen, MovementsScreen]) {
       const { unmount } = await renderWithProviders(<Screen />);
@@ -481,7 +485,7 @@ describe('tab screens', () => {
 
   it('Settings has no FAB', async () => {
     await renderWithProviders(<SettingsScreen />);
-    expect(screen.getByText(en.settings.language)).toBeTruthy();
+    expect(screen.getByText(en.settings.defaultCurrency)).toBeTruthy();
     expect(screen.queryByLabelText(en.fab.open)).toBeNull();
   });
 });

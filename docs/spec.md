@@ -405,3 +405,5 @@ Watch, web (v1 targets iOS and Android only). `[Q11]` App lock (PIN or biometric
 
 - `[Q11]` App lock (PIN or biometrics): deferred to release prep (user
   decision); decide then.
+- Release prep, device check pending (from 9c): per-app language on iOS
+  and Android 13+ in a development build.
