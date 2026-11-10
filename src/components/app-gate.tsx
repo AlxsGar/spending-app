@@ -6,6 +6,7 @@ import { CapSnackbarHost } from '@/components/cap-snackbar-host';
 import { CapsDialogHost } from '@/components/caps-exceeded-dialog';
 import { NotificationHost } from '@/components/notification-host';
 import { ErrorState, LoadingState, Screen, SuccessHost } from '@/components/ui';
+import { useDefaultCurrencyStore } from '@/stores/default-currency';
 import { useLanguageStore } from '@/stores/language-store';
 import { colors } from '@/theme';
 
@@ -18,6 +19,12 @@ export function AppGate() {
   useEffect(() => {
     void init();
   }, [init]);
+
+  // Read once at start, in the background; consumers wait or use the MXN
+  // fallback until it arrives (see useDefaultCurrency).
+  useEffect(() => {
+    void useDefaultCurrencyStore.getState().load();
+  }, []);
 
   if (!ready) return <LoadingState />;
   if (error) {

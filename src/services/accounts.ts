@@ -1,4 +1,4 @@
-import { getSetting, initDb } from './db';
+import { getSetting, initDb, setSetting } from './db';
 import { parseAmountToCents } from './money';
 import type { AmountParseError } from './money';
 import { parseCapInput, validateCapInput, writeCap } from './soft-caps';
@@ -327,6 +327,11 @@ export function removeAccount(id: number): Promise<void> {
       await db.runAsync('DELETE FROM accounts WHERE id = ?', id);
     });
   });
+}
+
+export async function saveDefaultCurrency(currency: Currency): Promise<void> {
+  if (!isCurrency(currency)) throw new Error(`Unknown currency ${currency}`);
+  await setSetting(DEFAULT_CURRENCY_KEY, currency);
 }
 
 export async function getDefaultCurrency(): Promise<Currency> {

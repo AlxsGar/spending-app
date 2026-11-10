@@ -17,6 +17,7 @@ import { listTransactions } from '@/services/transactions';
 import { useAccountsStore } from '@/stores/accounts-store';
 import { useCapsDialogStore } from '@/stores/caps-dialog-store';
 import { useCapsStore } from '@/stores/caps-store';
+import { useDefaultCurrencyStore } from '@/stores/default-currency';
 import { useRecurringStore } from '@/stores/recurring-store';
 import { useTransactionsStore } from '@/stores/transactions-store';
 import { silenceConsoleError } from '@/test/console-error';
@@ -35,6 +36,8 @@ jest.mock('expo-router', () => ({
   useRouter: () => ({ push: mockPush }),
 }));
 jest.mock('@/services/accounts', () => ({
+  // CURRENCIES feeds the Settings default currency picker.
+  CURRENCIES: jest.requireActual('@/services/accounts').CURRENCIES,
   listAccounts: jest.fn().mockResolvedValue([]),
   getDefaultCurrency: jest.fn().mockResolvedValue('MXN'),
   FALLBACK_CURRENCY: 'MXN',
@@ -117,6 +120,7 @@ describe('tab screens', () => {
     (listAccounts as jest.Mock).mockResolvedValue([]);
     (listTransactions as jest.Mock).mockResolvedValue([]);
     useAccountsStore.setState({ accounts: [], status: 'idle', saveError: false });
+    useDefaultCurrencyStore.setState({ value: null, saveError: false });
     useTransactionsStore.setState({ transactions: [], status: 'idle' });
     (listRecurring as jest.Mock).mockResolvedValue([]);
     useRecurringStore.setState({ payments: [], status: 'idle' });
@@ -527,6 +531,7 @@ describe('spending caps on Home and Settings', () => {
     (listCaps as jest.Mock).mockReset().mockResolvedValue([]);
     (saveGlobalCap as jest.Mock).mockReset().mockResolvedValue(undefined);
     useAccountsStore.setState({ accounts: [], status: 'idle', saveError: false });
+    useDefaultCurrencyStore.setState({ value: null, saveError: false });
     useTransactionsStore.setState({ transactions: [], status: 'idle' });
     useRecurringStore.setState({ payments: [], status: 'idle' });
     useCapsStore.setState({ caps: [], status: 'idle', saveError: false });

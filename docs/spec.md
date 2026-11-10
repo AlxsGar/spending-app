@@ -259,8 +259,8 @@ top of another dialog. Dialogs are for confirmations and short choices.
 
 ### Home
 
-- A row of account cards (name, icon, balance, currency). `[Q6]` which
-  accounts when there are many; default: horizontal scroll, all accounts.
+- A row of account cards (name, icon, balance, currency): all accounts in
+  one horizontal scroll, however many there are (decided, was `[Q6]`).
 - The recurring card stack (see "Recurring card stack"), replacing the
   former "upcoming" card. It never sends a notification.
 - Latest 3 transactions across all accounts: the three most recently
@@ -312,10 +312,24 @@ top of another dialog. Dialogs are for confirmations and short choices.
 
 ### Settings
 
-- Language (en / es), default currency, global soft cap, default reminder
-  selection for new recurring payments.
-- Backup: export and import. `[Q9]` Default until decided: a JSON file via
-  the system share sheet.
+- Default currency, global soft cap, default reminder selection for new
+  recurring payments.
+- Language has no setting (slice 9c): the app follows the device language,
+  any Spanish variant gives Spanish and anything else English, re-checked
+  at launch and on return to the foreground. Users can pick a language for
+  this app alone in the system settings (iOS per-app language, Android 13+
+  App language). Language is not part of a backup.
+- Default currency: the account form's currency picker; changes apply
+  live everywhere. If a global cap or recurring payments with no account
+  exist, changing it asks first; amounts are kept, not converted.
+- Backup (decided, was `[Q9]`): Export writes the whole database
+  (settings included, except language) to a JSON file shared via the system share sheet,
+  with format version, schema version, app version and export date, and
+  notes that the file is unencrypted. Import picks a file, validates it,
+  refuses newer schema versions (older ones are upgraded by the
+  migrations), shows the counts, export date and app version, warns that
+  current data will be replaced, then replaces everything in one
+  transaction and reschedules reminders.
 
 ## Reminders
 
@@ -389,7 +403,5 @@ Watch, web (v1 targets iOS and Android only). `[Q11]` App lock (PIN or biometric
 
 ## Open questions
 
-- `[Q6]` Home account row when there are many accounts (default: all,
-  horizontal scroll).
-- `[Q9]` Backup format and destination (default: JSON via share sheet).
-- `[Q11]` App lock in v1.
+- `[Q11]` App lock (PIN or biometrics): deferred to release prep (user
+  decision); decide then.

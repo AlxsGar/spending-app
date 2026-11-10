@@ -326,6 +326,25 @@ export const es: Translations = {
     english: 'English',
     spanish: 'Español',
     saveError: 'No se pudo guardar tu idioma. Inténtalo de nuevo.',
+    defaultCurrency: 'Moneda predeterminada',
+    defaultCurrencySaveError: 'No se pudo guardar tu moneda predeterminada. Inténtalo de nuevo.',
+    defaultCurrencyCheckError: 'No se pudieron revisar tus datos. Inténtalo de nuevo.',
+    defaultCurrencyChangeTitle: '¿Cambiar la moneda predeterminada?',
+    defaultCurrencyChangeConfirm: 'Cambiar moneda',
+    defaultCurrencyChangeCap:
+      'Tu límite global pasará a {{currency}}. No se convierten los montos.',
+    defaultCurrencyChangePayments_one:
+      '{{count}} pago recurrente sin cuenta pasará a {{currency}}. No se convierten los montos.',
+    defaultCurrencyChangePayments_many:
+      '{{count}} pagos recurrentes sin cuenta pasarán a {{currency}}. No se convierten los montos.',
+    defaultCurrencyChangePayments_other:
+      '{{count}} pagos recurrentes sin cuenta pasarán a {{currency}}. No se convierten los montos.',
+    defaultCurrencyChangeBoth_one:
+      'Tu límite global y {{count}} pago recurrente sin cuenta pasarán a {{currency}}. No se convierten los montos.',
+    defaultCurrencyChangeBoth_many:
+      'Tu límite global y {{count}} pagos recurrentes sin cuenta pasarán a {{currency}}. No se convierten los montos.',
+    defaultCurrencyChangeBoth_other:
+      'Tu límite global y {{count}} pagos recurrentes sin cuenta pasarán a {{currency}}. No se convierten los montos.',
     defaultReminders: 'Recordatorios predeterminados',
     defaultRemindersHint: 'Se usan en los pagos recurrentes nuevos. Los existentes conservan los suyos.',
     remindersSaveError: 'No se pudieron guardar tus recordatorios predeterminados. Inténtalo de nuevo.',

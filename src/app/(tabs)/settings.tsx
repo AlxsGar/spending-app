@@ -1,6 +1,7 @@
 import { useTranslation } from 'react-i18next';
 import { ScrollView } from 'react-native';
 
+import { DefaultCurrencySetting } from '@/components/default-currency-setting';
 import { GlobalCapSetting } from '@/components/global-cap-setting';
 import { ReminderChips } from '@/components/reminder-chips';
 import { AppButton, AppText, Screen, SegmentedControl, SettingRow } from '@/components/ui';
@@ -38,6 +39,7 @@ export default function SettingsScreen() {
             ]}
           />
         </SettingRow>
+        <DefaultCurrencySetting />
         <SettingRow
           label={t('settings.defaultReminders')}
           errorText={remindersSaveError ? t('settings.remindersSaveError') : undefined}

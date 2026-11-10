@@ -12,6 +12,7 @@ import { actionOccurrence, dayToDate, listRecurring, toDay, updateRecurring } fr
 import type { RecurringPayment } from '@/services/recurring';
 import { AlreadyHandledError, payOccurrence } from '@/services/recurring-actions';
 import { useAccountsStore } from '@/stores/accounts-store';
+import { useDefaultCurrencyStore } from '@/stores/default-currency';
 import { useRecurringStore } from '@/stores/recurring-store';
 import { useSuccessStore } from '@/stores/success-store';
 import { useTransactionsStore } from '@/stores/transactions-store';
@@ -140,6 +141,7 @@ beforeEach(() => {
   );
   useAccountsStore.setState({ accounts: [], status: 'idle', saveError: false });
   useRecurringStore.setState({ payments: [], status: 'idle' });
+  useDefaultCurrencyStore.setState({ value: null, saveError: false, loading: false });
   useTransactionsStore.setState({ transactions: [], status: 'idle' });
   useSuccessStore.setState({ current: null });
 });
@@ -242,6 +244,30 @@ describe('Pay now screen', () => {
     await waitFor(() => expect(payOccurrence).toHaveBeenCalledTimes(1));
     expect(payOccurrence).toHaveBeenCalledWith(
       expect.objectContaining({ accountId: 1, amountCents: 120050 }),
+    );
+  });
+
+  it('after the default currency changes, a payment with no account is read and paid in the new currency', async () => {
+    (listRecurring as jest.Mock).mockResolvedValue([{ ...stored, accountId: null }]);
+    await renderWithProviders(<PayRecurringScreen />);
+    await screen.findByText('Rent');
+    expect(screen.getByText('MXN')).toBeTruthy();
+
+    // Changed in Settings while this screen is open: JPY has no decimals.
+    act(() => useDefaultCurrencyStore.setState({ value: 'JPY' }));
+    expect(screen.getByText('JPY')).toBeTruthy();
+    fireEvent.changeText(screen.getByLabelText(en.recurring.amountLabel), '525.5');
+    save();
+    expect(await screen.findByText(en.recurring.errors.amountDecimalsNotAllowed)).toBeTruthy();
+    expect(payOccurrence).not.toHaveBeenCalled();
+
+    fireEvent.changeText(screen.getByLabelText(en.recurring.amountLabel), '525');
+    fireEvent.press(screen.getByLabelText(new RegExp(`^${en.recurring.accountLabel},`)));
+    fireEvent.press(await screen.findByText('Yen wallet'));
+    save();
+    await waitFor(() => expect(payOccurrence).toHaveBeenCalledTimes(1));
+    expect(payOccurrence).toHaveBeenCalledWith(
+      expect.objectContaining({ accountId: 2, amountCents: 52500 }),
     );
   });
 

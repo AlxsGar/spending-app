@@ -2,10 +2,18 @@ import { fireEvent, screen, waitFor } from '@testing-library/react-native';
 
 import { AppGate } from '@/components/app-gate';
 import { en } from '@/i18n/en';
+import { useDefaultCurrencyStore } from '@/stores/default-currency';
 import { useLanguageStore } from '@/stores/language-store';
 import { renderWithProviders } from '@/test/render';
 
 const mockLoad = jest.fn();
+const mockGetDefaultCurrency = jest.fn();
+
+// The gate reads the default currency at start; keep that read off the real db.
+jest.mock('@/services/accounts', () => ({
+  ...jest.requireActual('@/services/accounts'),
+  getDefaultCurrency: () => mockGetDefaultCurrency(),
+}));
 
 jest.mock('@/services/language', () => ({
   loadLanguage: () => mockLoad(),
@@ -30,7 +38,17 @@ jest.mock('expo-router', () => {
 describe('AppGate', () => {
   beforeEach(() => {
     mockLoad.mockReset();
+    mockGetDefaultCurrency.mockReset().mockResolvedValue('EUR');
+    useDefaultCurrencyStore.setState({ value: null, saveError: false, loading: false });
     useLanguageStore.setState({ language: 'en', ready: false, error: false });
+  });
+
+  it('reads the default currency once at start', async () => {
+    mockLoad.mockResolvedValue('en');
+    await renderWithProviders(<AppGate />);
+    await screen.findByText('app ready');
+    await waitFor(() => expect(useDefaultCurrencyStore.getState().value).toBe('EUR'));
+    expect(mockGetDefaultCurrency).toHaveBeenCalledTimes(1);
   });
 
   it('retry recovers after a failed init', async () => {

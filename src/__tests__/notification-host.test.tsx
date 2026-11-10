@@ -26,6 +26,11 @@ jest.mock('expo-router', () => {
     useRootNavigationState: () => ({ key: mockNavigationKey }),
   };
 });
+// AppGate reads the default currency at start; keep that read off the real db.
+jest.mock('@/services/accounts', () => ({
+  ...jest.requireActual('@/services/accounts'),
+  getDefaultCurrency: jest.fn().mockResolvedValue('MXN'),
+}));
 jest.mock('@/services/language', () => ({
   loadLanguage: () => mockLoadLanguage(),
   saveLanguage: jest.fn(),

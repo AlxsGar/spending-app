@@ -21,6 +21,7 @@ import {
 import type { RecurringPayment } from '@/services/recurring';
 import { payOccurrence } from '@/services/recurring-actions';
 import { useAccountsStore } from '@/stores/accounts-store';
+import { useDefaultCurrencyStore } from '@/stores/default-currency';
 import { useRecurringStore } from '@/stores/recurring-store';
 import { useSuccessStore } from '@/stores/success-store';
 import { silenceConsoleError } from '@/test/console-error';
@@ -150,6 +151,7 @@ beforeEach(() => {
     }),
   );
   useAccountsStore.setState({ accounts: [], status: 'idle', saveError: false });
+  useDefaultCurrencyStore.setState({ value: null, saveError: false });
   useRecurringStore.setState({ payments: [], status: 'idle' });
   useSuccessStore.setState({ current: null });
 });

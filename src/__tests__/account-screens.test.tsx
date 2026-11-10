@@ -22,6 +22,7 @@ import { computeBalances, listTransactions } from '@/services/transactions';
 import { listCaps } from '@/services/soft-caps';
 import { useAccountsStore } from '@/stores/accounts-store';
 import { useCapsStore } from '@/stores/caps-store';
+import { useDefaultCurrencyStore } from '@/stores/default-currency';
 import { useRecurringStore } from '@/stores/recurring-store';
 import { useSuccessStore } from '@/stores/success-store';
 import { useTransactionsStore } from '@/stores/transactions-store';
@@ -85,6 +86,7 @@ beforeEach(() => {
   (listTransactions as jest.Mock).mockResolvedValue([]);
   (listRecurring as jest.Mock).mockResolvedValue([]);
   useAccountsStore.setState({ accounts: [], status: 'idle', saveError: false });
+  useDefaultCurrencyStore.setState({ value: null, saveError: false });
   useTransactionsStore.setState({ transactions: [], status: 'idle' });
   useRecurringStore.setState({ payments: [], status: 'idle' });
   (listCaps as jest.Mock).mockResolvedValue([]);

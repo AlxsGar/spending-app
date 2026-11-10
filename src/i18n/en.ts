@@ -328,6 +328,24 @@ export const en = {
     english: 'English',
     spanish: 'Español',
     saveError: 'Could not save your language. Try again.',
+    defaultCurrency: 'Default currency',
+    defaultCurrencySaveError: 'Could not save your default currency. Try again.',
+    defaultCurrencyCheckError: 'Could not check your data. Try again.',
+    defaultCurrencyChangeTitle: 'Change default currency?',
+    defaultCurrencyChangeConfirm: 'Change currency',
+    defaultCurrencyChangeCap: "Your global cap will switch to {{currency}}. Amounts aren't converted.",
+    defaultCurrencyChangePayments_one:
+      "{{count}} recurring payment with no account will switch to {{currency}}. Amounts aren't converted.",
+    defaultCurrencyChangePayments_many:
+      "{{count}} recurring payments with no account will switch to {{currency}}. Amounts aren't converted.",
+    defaultCurrencyChangePayments_other:
+      "{{count}} recurring payments with no account will switch to {{currency}}. Amounts aren't converted.",
+    defaultCurrencyChangeBoth_one:
+      "Your global cap and {{count}} recurring payment with no account will switch to {{currency}}. Amounts aren't converted.",
+    defaultCurrencyChangeBoth_many:
+      "Your global cap and {{count}} recurring payments with no account will switch to {{currency}}. Amounts aren't converted.",
+    defaultCurrencyChangeBoth_other:
+      "Your global cap and {{count}} recurring payments with no account will switch to {{currency}}. Amounts aren't converted.",
     defaultReminders: 'Default reminders',
     defaultRemindersHint: 'Used for new recurring payments. Existing ones keep theirs.',
     remindersSaveError: 'Could not save your default reminders. Try again.',
