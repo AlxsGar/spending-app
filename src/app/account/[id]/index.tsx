@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next';
 import { StyleSheet, View } from 'react-native';
 
 import { AccountCapLine } from '@/components/account-cap-line';
+import { AccountRangeChart } from '@/components/range-chart';
 import { RecurringSection } from '@/components/recurring-section';
 import { TransactionList } from '@/components/transaction-list';
 import {
@@ -172,6 +173,13 @@ export default function AccountDetailScreen() {
             }}
           />
         </View>
+        {transactionsStatus === 'ready' ? (
+          <AccountRangeChart
+            accountId={account.id}
+            currency={account.currency}
+            transactions={transactions}
+          />
+        ) : null}
         {recurringStatus === 'error' ? (
           <ErrorState
             message={t('common.loadError')}

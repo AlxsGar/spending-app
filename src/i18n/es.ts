@@ -15,6 +15,14 @@ export const es: Translations = {
     addRecurring: 'Agregar pago recurrente',
     addAccount: 'Agregar cuenta',
   },
+  chart: {
+    title: 'Últimos 7 días',
+    income: 'Ingresos',
+    expenses: 'Gastos',
+    totals: 'Ingresos {{income}} · Gastos {{expenses}}',
+    empty: 'Sin movimientos en los últimos 7 días',
+    day: '{{date}}: ingresos {{income}}, gastos {{expenses}}',
+  },
   home: {
     emptyTitle: 'Tu dinero de un vistazo',
     emptyDescription: 'Aquí verás saldos, pagos próximos y actividad reciente.',

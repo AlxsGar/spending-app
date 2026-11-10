@@ -44,6 +44,26 @@ export const sizes = {
   tabBar: 56,
 } as const;
 
+// The line chart (LineChart). plotHeight is the height of the drawing area;
+// plotInset keeps the dots inside it. Lines are lineWidth thick with a dot of
+// dotRadius on each day; the selected day gets a larger dot (selectedDotRadius)
+// and a guideWidth vertical line, and its label is bold and tinted too, so
+// selection is not shown by color alone. The baseline (zero) is a divider line.
+export const chart = {
+  plotHeight: 120,
+  plotInset: 8,
+  lineWidth: 2,
+  dotRadius: 3,
+  selectedDotRadius: 5,
+  guideWidth: 1,
+  baselineWidth: 1,
+  // The expense line is dashed (income is solid) so color is never the only cue;
+  // the legend sample is a short line of legendWidth with the same style.
+  dashArray: [6, 4],
+  legendWidth: 24,
+  legendHeight: 12,
+} as const;
+
 // Timing and spring settings for the success feedback card.
 export const motion = {
   successDuration: 1500,

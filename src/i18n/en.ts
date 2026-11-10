@@ -11,6 +11,14 @@ export const en = {
     addRecurring: 'Add recurring payment',
     addAccount: 'Add account',
   },
+  chart: {
+    title: 'Last 7 days',
+    income: 'Income',
+    expenses: 'Expenses',
+    totals: 'Income {{income}} · Expenses {{expenses}}',
+    empty: 'No movements in the last 7 days',
+    day: '{{date}}: income {{income}}, expenses {{expenses}}',
+  },
   home: {
     emptyTitle: 'Your money at a glance',
     emptyDescription: 'Balances, upcoming payments and recent activity will show up here.',

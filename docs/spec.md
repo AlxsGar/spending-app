@@ -264,16 +264,29 @@ payment*, *Add account*. Settings has no FAB.
   transaction's date as secondary text under the amount, so a backdated
   entry is visibly dated. Movements and the account detail order and group
   by transaction date.
-- Chart of income and expenses. Default until decided: current month,
-  bars per week, income in `accent`, expenses in `alert`. `[Q7]` period
-  selector later.
+- Home order: cap banner, chart, account cards, recurring card stack,
+  latest 3 transactions.
+- Chart of income and expenses, a line chart of the last 7 local days
+  (today minus 6 through today). Recorded transactions only (planned
+  recurring payments do not count), by local date. One point per day, that
+  day's total (not cumulative). Income line in `accent`, expenses line in
+  `alert`, with a legend. Range totals above the chart; tapping a day shows
+  its totals under it (today is selected at first). With no transactions in
+  the range, a short line replaces the chart. Totals never mix currencies:
+  when two or more currencies have transactions in the range, chips above
+  the chart choose the currency, the default currency first. Drawn with
+  react-native-svg. Range selection (slice 7b): chips 7 days (default),
+  30 days, This month, Custom (From and To with the date picker, at most one
+  year); not remembered between visits; at 30 days or more the date labels
+  thin out, tap-to-read stays.
 
 ### Accounts
 
 - List of all accounts with balance.
 - Tapping one opens the account detail: all its transactions newest first,
-  its chart of income and expenses `[Q8]` (same chart as Home, scoped to
-  the account), and its recurring payments with next due date.
+  its chart of income and expenses (same chart as Home, for that account
+  only and in its currency, after the action buttons), and its recurring
+  payments with next due date.
 
 ### Movements
 
@@ -343,9 +356,6 @@ Watch, web (v1 targets iOS and Android only). `[Q11]` App lock (PIN or biometric
 
 - `[Q6]` Home account row when there are many accounts (default: all,
   horizontal scroll).
-- `[Q7]` Chart period selector (default: current month only).
-- `[Q8]` Account detail chart scope (default: same as Home, scoped to the
-  account).
 - `[Q9]` Backup format and destination (default: JSON via share sheet).
 - `[Q10]` Month projection rule.
 - `[Q11]` App lock in v1.

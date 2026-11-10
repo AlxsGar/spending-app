@@ -12,6 +12,8 @@ type Props = {
   align?: 'left' | 'center' | 'right';
   numberOfLines?: number;
   maxFontSizeMultiplier?: number;
+  // Announce changes to the text to screen readers (Android live region).
+  accessibilityLiveRegion?: 'none' | 'polite' | 'assertive';
   style?: StyleProp<TextStyle>;
 };
 
@@ -22,10 +24,12 @@ export function AppText({
   align = 'left',
   numberOfLines,
   maxFontSizeMultiplier,
+  accessibilityLiveRegion,
   style,
 }: Props) {
   return (
     <Text
+      accessibilityLiveRegion={accessibilityLiveRegion}
       numberOfLines={numberOfLines}
       ellipsizeMode="tail"
       maxFontSizeMultiplier={maxFontSizeMultiplier}

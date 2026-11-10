@@ -22,6 +22,8 @@ export type { ChipOption } from './FilterChips';
 export { Fab } from './Fab';
 export type { FabAction } from './Fab';
 export { IconPicker } from './IconPicker';
+export { LineChart } from './LineChart';
+export type { LineChartPoint } from './LineChart';
 export { ListRow } from './ListRow';
 export { LoadingState } from './LoadingState';
 export { OptionPicker } from './OptionPicker';

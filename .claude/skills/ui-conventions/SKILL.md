@@ -212,6 +212,32 @@ notice after saving an expense) uses the `AppSnackbar` wrapper in
 - Never for failures (those stay inline) and never the only way to reach
   something: the action opens a screen or dialog that is reachable elsewhere.
 
+## Chart
+
+Income vs expenses over a run of days (the last 7 on Home and account detail)
+uses the `LineChart` wrapper in `src/components/ui/`, fed by `RangeChart`
+(`src/components/`); never hand-roll a chart in a screen. Paper has no chart, so
+it is a custom component built from `react-native-svg`, Paper's `TouchableRipple`
+and `AppText`. Every size, stroke width and color is a theme value (`chart`).
+
+- Two lines on one shared scale, one point per day, each point that day's total
+  (not cumulative): income in `accent` as a solid line, expenses in `alert` as a
+  dashed line (the dash pattern is a theme token), never netted. Zero is a
+  divider-colored baseline. A legend names Income and Expenses with a short line
+  sample in each style, so color is never the only cue; the totals line above
+  gives the range's figures.
+- The x-axis label is the day of the month. The labels thin out on long ranges
+  (`labelIndices`); 7 days shows all 7. Thinned days stay tappable.
+- Tap a day to select it (today first). The selected day has a vertical guide, a
+  larger dot, a bold label and a tinted column, and a caption line under the chart
+  reads out its totals (a polite live region, so a tap announces the new day). Each day is one accessible button (selected state)
+  labelled "Nov 8: income $X, expenses $Y".
+- Totals never mix currencies: Home shows chips (`FilterChips`) only when two or
+  more currencies have movements in the range; account detail never does.
+- No movements in the range: a `textSecondary` line replaces the chart.
+- Home order: cap banner, chart, account cards, recurring deck, latest transactions.
+- No animation, so there is nothing to disable for reduce motion.
+
 ## Do not
 
 - No gradients, drop shadows beyond Paper elevation, or decorative icons.
