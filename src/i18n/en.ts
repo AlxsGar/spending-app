@@ -27,6 +27,25 @@ export const en = {
     empty: 'No movements in this period',
     day: '{{date}}: income {{income}}, expenses {{expenses}}',
   },
+  projection: {
+    title: 'End of month balance projection',
+    account: 'End of month: {{amount}}',
+    lineLabel: 'End of month, {{currency}}: {{amount}}',
+    infoLabel: 'About the end of month projection',
+    infoClose: 'Got it',
+    infoIntro:
+      'What your balance will be on the last day of this month if every recurring payment due by then is paid.',
+    infoHow: 'How it’s calculated:',
+    infoHowText: 'current balance minus every recurring payment still due this month.',
+    infoCounts:
+      'Counts: overdue payments that are still unpaid, and every remaining occurrence this month (a weekly payment can count several times).',
+    infoNotCounts:
+      'Doesn’t count: payments already paid or skipped, inactive or finished payments, and anything due next month.',
+    infoAccounts:
+      'Each account shows its own projection. The total also includes recurring payments with no account, in your default currency.',
+    infoCurrencies: 'Each currency is shown separately; nothing is converted.',
+    infoOnlyRecurring: 'Only recurring payments are projected; one-off spending isn’t.',
+  },
   home: {
     emptyTitle: 'Your money at a glance',
     emptyDescription: 'Balances, upcoming payments and recent activity will show up here.',
@@ -40,6 +59,8 @@ export const en = {
     editTitle: 'Edit account',
     detailTitle: 'Account',
     cardLabel: '{{name}}, balance {{balance}}, currency {{currency}}',
+    cardLabelProjection:
+      '{{name}}, balance {{balance}}, end of month {{projection}}, currency {{currency}}',
     notFound: 'This account no longer exists.',
     nameLabel: 'Name',
     iconLabel: 'Icon',

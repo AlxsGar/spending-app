@@ -5,7 +5,9 @@ import { useTranslation } from 'react-i18next';
 import { StyleSheet, View } from 'react-native';
 
 import { AccountCapLine } from '@/components/account-cap-line';
+import { ProjectionLine } from '@/components/projection-line';
 import { AccountRangeChart } from '@/components/range-chart';
+import { useProjection } from '@/components/use-projection';
 import { RecurringSection } from '@/components/recurring-section';
 import { TransactionList } from '@/components/transaction-list';
 import {
@@ -70,6 +72,7 @@ export default function AccountDetailScreen() {
     [payments, id],
   );
   const balances = useMemo(() => computeBalances(accounts, transactions), [accounts, transactions]);
+  const projection = useProjection(accounts, balances);
   const accountTransactions = useMemo(
     () => transactions.filter((item) => item.accountId === Number(id)),
     [transactions, id],
@@ -137,6 +140,12 @@ export default function AccountDetailScreen() {
             align="left"
             colored
           />
+          {projection.perAccount ? (
+            <ProjectionLine
+              cents={projection.perAccount[account.id] ?? 0}
+              currency={account.currency}
+            />
+          ) : null}
           <AccountCapLine accountId={account.id} currency={account.currency} />
           {account.balanceAnchorAt ? (
             <AppText variant="caption" color="textSecondary">

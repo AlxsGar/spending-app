@@ -87,6 +87,10 @@ export const useTransactionsStore = create<TransactionsState>((set, get) => ({
       set((state) => ({
         transactions: state.transactions.filter((item) => item.id !== id),
       }));
+      // No await between the removal above and onUndone (which lowers the
+      // payment's last_confirmed_at): keep the transaction first. A subscriber
+      // then sees the balance up before the occurrence is due again (briefly too
+      // high), never the reverse (too low). Pinned by projection-order.test.ts.
       if (undone && onUndone) onUndone(undone.paymentId, undone.lastConfirmedAt);
       return true;
     } catch {

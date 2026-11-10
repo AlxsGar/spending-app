@@ -6,6 +6,8 @@ import { ScrollView } from 'react-native';
 import { AccountCards } from '@/components/account-cards';
 import { CapBanner } from '@/components/cap-banner';
 import { HomeChart } from '@/components/home-chart';
+import { ProjectionSummary } from '@/components/projection-summary';
+import { useProjection } from '@/components/use-projection';
 import { RecurringStack } from '@/components/recurring-stack';
 import { TabScreen } from '@/components/tab-screen';
 import { TransactionRow } from '@/components/transaction-row';
@@ -26,6 +28,7 @@ export default function HomeScreen() {
   const { t } = useTranslation();
   const router = useRouter();
   const { accounts, transactions, balances, status, reload } = useLedger();
+  const projection = useProjection(accounts, balances);
 
   // The last three RECORDED (not the last three by date), so a backdated
   // entry shows up. Rows of deleted accounts are skipped.
@@ -61,9 +64,11 @@ export default function HomeScreen() {
       <ScrollView>
         <CapBanner />
         <HomeChart accounts={accounts} transactions={transactions} />
+        {projection.overall ? <ProjectionSummary lines={projection.overall} /> : null}
         <AccountCards
           accounts={accounts}
           balances={balances}
+          projections={projection.perAccount}
           onOpen={(id) => router.push({ pathname: '/account/[id]', params: { id } })}
         />
         <RecurringStack />

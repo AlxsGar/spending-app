@@ -462,7 +462,8 @@ describe('account detail cap line', () => {
     await act(async () => {
       useCapsStore.setState({ status: 'error' });
     });
-    expect(screen.queryByText(/ of /)).toBeNull();
+    // The cap progress line ("$X of $Y this month"); the projection line also has " of ".
+    expect(screen.queryByText(/\d of /)).toBeNull();
   });
 
   it('is in Spanish', async () => {

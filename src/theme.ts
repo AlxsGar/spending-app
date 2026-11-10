@@ -32,7 +32,7 @@ export const sizes = {
   iconSmall: 16,
   iconLarge: 40,
   accountCard: 160,
-  accountCardHeight: 176,
+  accountCardHeight: 200,
   dialogList: 320,
   badge: 24,
   successIcon: 48,

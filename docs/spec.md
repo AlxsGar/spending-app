@@ -335,10 +335,32 @@ reminders.
 
 ## Month projection
 
-Shown per account and overall: current balance minus the unconfirmed
-recurring payments still due this month. `[Q10]` confirm this rule when the
-slice comes up. Decided: recurring payments with no account count in the
-overall projection but not in any account's.
+Projection = current balance minus every unpaid, unskipped occurrence of
+active recurring payments due on or before the last day of the current
+month (decided, was `[Q10]`). That includes an overdue unpaid occurrence and
+dismissed occurrences (dismissing only hides a card); paid and skipped
+occurrences, inactive and finished payments, and occurrences after the
+payment's end date don't count. Recurring payments with no account count in
+the overall projection (in the default currency) but not in any account's.
+
+- Per account: a secondary line under the balance on the Home account card
+  and on account detail ("End of month: $1,240"), always shown (equal to
+  the balance when nothing is due). On account detail the order is
+  balance, projection, cap line.
+- Overall: a summary on Home between the chart and the account cards,
+  titled "End of month balance projection", with an (i) button that opens a
+  text dialog explaining what the figures are and how they're calculated;
+  one line per currency that has an account, default currency first,
+  always shown. No conversion between currencies. If unassigned payments are due
+  and no account uses the default currency, a default-currency line is
+  still shown.
+- All projection figures are quiet secondary text (no color), signed, so a
+  negative projection reads by its minus sign.
+- Exception to "always shown": the lines and the summary are hidden until
+  recurring payments have loaded, and while that load is in error (a
+  projection equal to the balance would mislead).
+- Refreshes after any transaction or recurring change and on day and month
+  change.
 
 ## Development tools
 
@@ -370,5 +392,4 @@ Watch, web (v1 targets iOS and Android only). `[Q11]` App lock (PIN or biometric
 - `[Q6]` Home account row when there are many accounts (default: all,
   horizontal scroll).
 - `[Q9]` Backup format and destination (default: JSON via share sheet).
-- `[Q10]` Month projection rule.
 - `[Q11]` App lock in v1.

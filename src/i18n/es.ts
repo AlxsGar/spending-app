@@ -31,6 +31,25 @@ export const es: Translations = {
     empty: 'Sin movimientos en este periodo',
     day: '{{date}}: ingresos {{income}}, gastos {{expenses}}',
   },
+  projection: {
+    title: 'Proyección del saldo a fin de mes',
+    account: 'Fin de mes: {{amount}}',
+    lineLabel: 'Fin de mes, {{currency}}: {{amount}}',
+    infoLabel: 'Acerca de la proyección a fin de mes',
+    infoClose: 'Entendido',
+    infoIntro:
+      'Cuánto será tu saldo el último día de este mes si se pagan todos los pagos recurrentes que vencen para entonces.',
+    infoHow: 'Cómo se calcula:',
+    infoHowText: 'saldo actual menos cada pago recurrente que aún vence este mes.',
+    infoCounts:
+      'Se incluyen: los pagos vencidos que siguen sin pagar, y cada vencimiento restante de este mes (un pago semanal puede contar varias veces).',
+    infoNotCounts:
+      'No se incluyen: los pagos ya pagados u omitidos, los pagos inactivos o terminados y todo lo que vence el mes siguiente.',
+    infoAccounts:
+      'Cada cuenta muestra su propia proyección. El total también incluye los pagos recurrentes sin cuenta, en tu moneda predeterminada.',
+    infoCurrencies: 'Cada moneda se muestra por separado; no se convierte nada.',
+    infoOnlyRecurring: 'Solo se proyectan los pagos recurrentes; los gastos sueltos no.',
+  },
   home: {
     emptyTitle: 'Tu dinero de un vistazo',
     emptyDescription: 'Aquí verás saldos, pagos próximos y actividad reciente.',
@@ -44,6 +63,8 @@ export const es: Translations = {
     editTitle: 'Editar cuenta',
     detailTitle: 'Cuenta',
     cardLabel: '{{name}}, saldo {{balance}}, moneda {{currency}}',
+    cardLabelProjection:
+      '{{name}}, saldo {{balance}}, fin de mes {{projection}}, moneda {{currency}}',
     notFound: 'Esta cuenta ya no existe.',
     nameLabel: 'Nombre',
     iconLabel: 'Ícono',

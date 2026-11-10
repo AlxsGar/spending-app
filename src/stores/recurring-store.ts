@@ -150,12 +150,20 @@ export const useRecurringStore = create<RecurringState>((set, get) => ({
         accountId,
         ...(amountCents === undefined ? {} : { amountCents }),
       });
-      useTransactionsStore.getState().addExisting(transaction);
+      // No await between these two updates (React batches them into one render,
+      // so the pair is atomic for rendering). The order is defence in depth for
+      // non-React subscribers and for a future await: the end-of-month
+      // projection subtracts unpaid occurrences from the balance, so confirm the
+      // occurrence BEFORE adding its expense. A subscriber then sees "confirmed,
+      // balance not yet lowered" (briefly too high), never "expense added, still
+      // unpaid" (the occurrence subtracted twice, too low). Pinned by
+      // projection-order.test.ts.
       set((state) => ({
         payments: state.payments.map((item) =>
           item.id === id ? { ...item, lastConfirmedAt: payment.lastConfirmedAt } : item,
         ),
       }));
+      useTransactionsStore.getState().addExisting(transaction);
       // The paid occurrence's reminders go; the next occurrence's are planned.
       void requestReminderSync();
       return 'paid';
