@@ -8,6 +8,7 @@ export { AppBadge } from './AppBadge';
 export { AppButton } from './AppButton';
 export { AppCard } from './AppCard';
 export { AppIcon } from './AppIcon';
+export { AppIconButton } from './AppIconButton';
 export { AppSnackbar } from './AppSnackbar';
 export { AppText } from './AppText';
 export { CardStack } from './CardStack';

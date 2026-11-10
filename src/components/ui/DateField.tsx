@@ -24,6 +24,8 @@ type Props = {
   allowFuture?: boolean;
   // The earliest day the picker offers (local day).
   minimumDate?: Date;
+  // The latest day the picker offers (local day); replaces the default "today".
+  maximumDate?: Date;
 };
 
 const defaultNow = () => new Date();
@@ -56,15 +58,21 @@ export function DateField({
   getNow = defaultNow,
   allowFuture = false,
   minimumDate,
+  maximumDate: latestDay,
 }: Props) {
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState(value);
-  const [maximumDate, setMaximumDate] = useState<Date | undefined>(() =>
-    allowFuture ? undefined : endOfLocalDay(getNow()),
-  );
+  // An explicit latest day wins over "today" and `allowFuture`.
+  const currentLimit = () =>
+    latestDay
+      ? endOfLocalDay(latestDay)
+      : allowFuture
+        ? undefined
+        : endOfLocalDay(getNow());
+  const [maximumDate, setMaximumDate] = useState<Date | undefined>(currentLimit);
 
   const openPicker = () => {
-    const limit = allowFuture ? undefined : endOfLocalDay(getNow());
+    const limit = currentLimit();
     if (Platform.OS === 'android') {
       DateTimePickerAndroid.open({
         value,

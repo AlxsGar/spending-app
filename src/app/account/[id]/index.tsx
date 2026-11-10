@@ -240,5 +240,9 @@ const styles = StyleSheet.create({
   },
   actions: {
     gap: spacing.md,
+    // The same gap between sections as under the header block; keeps the chart's
+    // header row off the Delete button (the chart itself has no top margin, so
+    // Home is unchanged).
+    marginBottom: spacing.xl,
   },
 });

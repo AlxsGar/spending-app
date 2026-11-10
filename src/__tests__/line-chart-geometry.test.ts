@@ -1,4 +1,4 @@
-import { pointX, pointY } from '@/components/ui/LineChart';
+import { nearestIndex, pointX, pointY } from '@/components/ui/LineChart';
 import { chart } from '@/theme';
 
 describe('pointX', () => {
@@ -17,6 +17,42 @@ describe('pointX', () => {
 
   it('is 0 with no points', () => {
     expect(pointX(0, 0, 350)).toBe(0);
+  });
+});
+
+describe('nearestIndex', () => {
+  it('picks the day whose column contains x (7 days, 350 px)', () => {
+    expect(nearestIndex(0, 7, 350)).toBe(0);
+    expect(nearestIndex(49, 7, 350)).toBe(0);
+    expect(nearestIndex(50, 7, 350)).toBe(1);
+    expect(nearestIndex(175, 7, 350)).toBe(3);
+    expect(nearestIndex(349, 7, 350)).toBe(6);
+  });
+
+  it('is the inverse of pointX', () => {
+    for (const count of [7, 30, 366]) {
+      for (let index = 0; index < count; index++) {
+        expect(nearestIndex(pointX(index, count, 350), count, 350)).toBe(index);
+      }
+    }
+  });
+
+  it('works for 30 days', () => {
+    expect(nearestIndex(0, 30, 360)).toBe(0);
+    expect(nearestIndex(11.9, 30, 360)).toBe(0);
+    expect(nearestIndex(12, 30, 360)).toBe(1);
+    expect(nearestIndex(359, 30, 360)).toBe(29);
+  });
+
+  it('clamps past either edge', () => {
+    expect(nearestIndex(-50, 7, 350)).toBe(0);
+    expect(nearestIndex(350, 7, 350)).toBe(6);
+    expect(nearestIndex(9999, 30, 350)).toBe(29);
+  });
+
+  it('is 0 with nothing to choose from', () => {
+    expect(nearestIndex(10, 0, 350)).toBe(0);
+    expect(nearestIndex(10, 7, 0)).toBe(0);
   });
 });
 

@@ -19,6 +19,9 @@ type Props<T extends string> = {
   cancelLabel: string;
   errorText?: string;
   helperText?: string;
+  // Text shown in the field instead of the selected option's label (a value
+  // that is not one of the options, such as a custom date range).
+  displayValue?: string;
 };
 
 // Custom component: Paper has no select. A read-only Paper TextInput (same
@@ -34,10 +37,11 @@ export function OptionPicker<T extends string>({
   cancelLabel,
   errorText,
   helperText,
+  displayValue,
 }: Props<T>) {
   const [open, setOpen] = useState(false);
   const selected = options.find((option) => option.value === value);
-  const text = selected ? selected.label : value;
+  const text = displayValue ?? (selected ? selected.label : value);
 
   return (
     <View>

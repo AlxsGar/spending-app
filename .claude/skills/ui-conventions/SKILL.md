@@ -214,11 +214,42 @@ notice after saving an expense) uses the `AppSnackbar` wrapper in
 
 ## Chart
 
-Income vs expenses over a run of days (the last 7 on Home and account detail)
-uses the `LineChart` wrapper in `src/components/ui/`, fed by `RangeChart`
-(`src/components/`); never hand-roll a chart in a screen. Paper has no chart, so
-it is a custom component built from `react-native-svg`, Paper's `TouchableRipple`
-and `AppText`. Every size, stroke width and color is a theme value (`chart`).
+Income vs expenses over a run of days (7 days, 30 days, this month or a custom
+range, on Home and account detail) uses the `LineChart` wrapper in
+`src/components/ui/`, fed by `RangeChart` (`src/components/`); never hand-roll a
+chart in a screen. Paper has no chart, so it is a custom component built from
+`react-native-svg`, Gesture Handler and `AppText`. Every size, stroke width and
+color is a theme value (`chart`).
+
+- Block order: the header row (`ChartRangeHeader`), the currency chips (only with
+  2+ currencies), the totals line, the legend, the chart, the readout. There is no
+  separate title text.
+- Header row: on the left a range dropdown (the `OptionPicker` wrapper, a centered
+  dialog list; Paper `Menu` stays avoided) with Last 7 days (default), Last 30 days
+  and This month (the 1st to today). It is the chart's title: its field label is
+  "Range" and its text is the range's name, or the dates (`formatDateRange`) while
+  a custom range is active, with no preset checked then. Picking a preset leaves
+  the custom range. On the right a filter `AppIconButton` ("Custom range") opens
+  the Custom range screen; while a custom range is active it has the accent icon
+  and a tinted background, its icon changes shape (`filter-variant` to
+  `filter-check`) and its accessibility state is selected, so color is never the
+  only cue. Not remembered; each chart keeps its own range.
+- `AppIconButton` (`src/components/ui/`): a Paper `IconButton` at least 48 by 48.
+  `selected` gives the accent icon, the tinted background (`opacity.selected`) and
+  the selected accessibility state; pass `selectedIcon` to also change the shape
+  while selected. Use it for any standalone icon button (ActionMenu keeps its own).
+- Heading: the dropdown is the visible title and is a button, so the block has no
+  heading role of its own (a trade-off: SectionHeader was a heading, and a control
+  cannot be both). The chart's adjustable element carries the title as its label.
+- Custom range screen (the `/chart-range` stack screen, pushed like the other
+  forms; `ChartRangeForm`): From and To `DateField`s, Apply and Cancel, prefilled
+  with the current range. The pickers only offer valid days (`fromBounds`,
+  `toBounds`): From up to To and at most a year before it, To from From up to the
+  earlier of today and a year after From. A field keeps its last valid value and
+  ignores an out-of-bounds one, so there are no range error messages; Apply still
+  checks `validateCustomRange` as a guard. Apply leaves the result in
+  `chart-range-store` for the chart id that opened it ('home', 'account-<id>') and
+  goes back; Cancel just goes back.
 
 - Two lines on one shared scale, one point per day, each point that day's total
   (not cumulative): income in `accent` as a solid line, expenses in `alert` as a
@@ -227,14 +258,25 @@ and `AppText`. Every size, stroke width and color is a theme value (`chart`).
   sample in each style, so color is never the only cue; the totals line above
   gives the range's figures.
 - The x-axis label is the day of the month. The labels thin out on long ranges
-  (`labelIndices`); 7 days shows all 7. Thinned days stay tappable.
-- Tap a day to select it (today first). The selected day has a vertical guide, a
-  larger dot, a bold label and a tinted column, and a caption line under the chart
-  reads out its totals (a polite live region, so a tap announces the new day). Each day is one accessible button (selected state)
-  labelled "Nov 8: income $X, expenses $Y".
+  (`labelIndices`, at most 7); 7 days shows all 7. Dots are drawn only while a day
+  is wide enough (`chart.dotMinSpacing`); the selected day always has its dot. Each
+  label is centered on its day, so on long ranges the first and last labels may
+  overhang the plot edge slightly, on purpose.
+- Scrubber: a tap or a horizontal drag anywhere on the plot (its full width and
+  height) selects the nearest day (`nearestIndex`, clamped at the edges), at any
+  range length. The last day (today) is selected first and again whenever the
+  range changes. A vertical swipe stays with the scroll view. The selected day has
+  a vertical guide, a larger dot and a bold label (if that day is labelled), and a
+  caption line under the chart reads out its totals (a polite live region, so a
+  new day is announced).
+- Screen readers: the plot and its labels are one element with role `adjustable`.
+  Its label is the title, its value the selected day ("Nov 8: income $X, expenses
+  $Y"), and the `increment`/`decrement` actions move one day, clamped at the ends.
+  There are no per-day buttons.
 - Totals never mix currencies: Home shows chips (`FilterChips`) only when two or
-  more currencies have movements in the range; account detail never does.
-- No movements in the range: a `textSecondary` line replaces the chart.
+  more currencies have movements in the selected range; account detail never does.
+- No movements in the range: a `textSecondary` line ("No movements in this
+  period") replaces the chart; the header row stays.
 - Home order: cap banner, chart, account cards, recurring deck, latest transactions.
 - No animation, so there is nothing to disable for reduce motion.
 
@@ -243,4 +285,6 @@ and `AppText`. Every size, stroke width and color is a theme value (`chart`).
 - No gradients, drop shadows beyond Paper elevation, or decorative icons.
 - No emoji in the interface.
 - No colors outside the palette.
-- No modal on top of a modal.
+- No modal on top of a modal. A form that contains a date picker is a screen, not
+  a dialog (like the transaction, recurring and Pay now forms), so a picker never
+  opens on top of a dialog. Dialogs are for confirmations and short choices.

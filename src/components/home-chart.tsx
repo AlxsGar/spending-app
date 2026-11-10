@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 
-import { RangeChart, useChartDays } from '@/components/range-chart';
+import { ChartRangeHeader, useChartRange } from '@/components/chart-range-controls';
+import { RangeChart } from '@/components/range-chart';
 import { FilterChips } from '@/components/ui';
 import type { Account, Currency } from '@/services/accounts';
 import { pickChartCurrency, rangeCurrencies } from '@/services/chart-range';
@@ -12,14 +13,14 @@ type Props = {
   transactions: readonly Transaction[];
 };
 
-// Home's chart of the last 7 days. Totals never mix currencies: the chart is for
+// Home's chart, over the range chosen with the range chips (7 days at first). Totals never mix currencies: the chart is for
 // one currency, chosen among those of the accounts that have transactions in the
 // range. Chips appear only with two or more (the default currency is selected
 // first when it is among them, else the first alphabetically); with one there
 // are no chips; with none the chart shows its empty line (in the default
 // currency). Transactions of deleted accounts are skipped.
 export function HomeChart({ accounts, transactions }: Props) {
-  const days = useChartDays();
+  const { chartId, range, setRange, days, today, title } = useChartRange('home');
   const defaultCurrency = useDefaultCurrency();
   const [chosen, setChosen] = useState<Currency | null>(null);
 
@@ -60,6 +61,17 @@ export function HomeChart({ accounts, transactions }: Props) {
       accountIds={accountIds}
       currency={shown}
       days={days}
+      title={title}
+      header={
+        <ChartRangeHeader
+          chartId={chartId}
+          range={range}
+          title={title}
+          days={days}
+          today={today}
+          onChange={setRange}
+        />
+      }
       controls={chips}
     />
   );

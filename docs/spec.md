@@ -253,6 +253,10 @@ Bottom tabs: **Home / Accounts / Movements / Settings**. Home, Accounts and
 Movements have a `+` FAB that opens a menu: *Add transaction*, *Add recurring
 payment*, *Add account*. Settings has no FAB.
 
+A form that contains a date picker is a screen, not a dialog (as the
+transaction, recurring and Pay now forms are), so the picker never opens on
+top of another dialog. Dialogs are for confirmations and short choices.
+
 ### Home
 
 - A row of account cards (name, icon, balance, currency). `[Q6]` which
@@ -275,10 +279,19 @@ payment*, *Add account*. Settings has no FAB.
   the range, a short line replaces the chart. Totals never mix currencies:
   when two or more currencies have transactions in the range, chips above
   the chart choose the currency, the default currency first. Drawn with
-  react-native-svg. Range selection (slice 7b): chips 7 days (default),
-  30 days, This month, Custom (From and To with the date picker, at most one
-  year); not remembered between visits; at 30 days or more the date labels
-  thin out, tap-to-read stays.
+  react-native-svg. Range selection (slice 7b): a header row inside the
+  chart holds a range dropdown (Last 7 days, the default; Last 30 days; This
+  month, the 1st to today), which is also the chart's title, and a filter
+  button next to it that opens Custom range (a screen pushed like the other
+  form screens, with From and To date fields and Apply/Cancel). The pickers
+  only allow valid dates: From ≤ To ≤ today and at most one year apart, so
+  an invalid date can't be chosen. With a custom range active the dropdown
+  shows the dates and the filter button looks selected. Ranges are not
+  remembered between visits; Home and account detail choose separately. At
+  30 days or more the date labels thin out. Choosing a day: tap or
+  drag anywhere on the chart and the nearest day is selected (every range
+  length); for screen readers the chart is one adjustable control, swiping
+  up or down moves a day and announces its totals.
 
 ### Accounts
 

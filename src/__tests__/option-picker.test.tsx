@@ -42,6 +42,36 @@ describe('OptionPicker', () => {
     expect(screen.queryByText('Choose account')).toBeNull();
   });
 
+  it('displayValue shows in the field and in the accessibility label, for a value that matches no option', async () => {
+    await renderWithProviders(
+      <OptionPicker
+        value="other"
+        options={options}
+        onChange={jest.fn()}
+        label="Account"
+        title="Choose account"
+        cancelLabel="Cancel"
+        displayValue="Oct 3 – Nov 9"
+      />,
+    );
+    expect(screen.getByDisplayValue('Oct 3 – Nov 9', { includeHiddenElements: true })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Account, Oct 3 – Nov 9' })).toBeTruthy();
+  });
+
+  it('without displayValue an unmatched value is shown as it is', async () => {
+    await renderWithProviders(
+      <OptionPicker
+        value="other"
+        options={options}
+        onChange={jest.fn()}
+        label="Account"
+        title="Choose account"
+        cancelLabel="Cancel"
+      />,
+    );
+    expect(screen.getByRole('button', { name: 'Account, other' })).toBeTruthy();
+  });
+
   it('cannot be typed into', async () => {
     await renderWithProviders(<Harness />);
     expect(field().props.editable).toBe(false);

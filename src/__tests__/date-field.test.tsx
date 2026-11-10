@@ -98,6 +98,32 @@ describe('DateField on Android', () => {
     expect(openCall().minimumDate).toEqual(floor);
   });
 
+  it('an explicit maximumDate replaces both the today limit and allowFuture', async () => {
+    const latest = new Date(2026, 2, 7);
+    const render = (allowFuture: boolean) =>
+      renderWithProviders(
+        <DateField
+          value={TODAY}
+          onChange={jest.fn()}
+          locale="es"
+          accessibilityLabel="Date"
+          displayValue="Today"
+          confirmLabel="Done"
+          cancelLabel="Cancel"
+          allowFuture={allowFuture}
+          maximumDate={latest}
+        />,
+      );
+    const first = await render(false);
+    fireEvent.press(screen.getByLabelText('Date'));
+    expect(openCall().maximumDate).toEqual(new Date(2026, 2, 7, 23, 59, 59, 999));
+    first.unmount();
+    await render(true);
+    fireEvent.press(screen.getByLabelText('Date'));
+    const second = (DateTimePickerAndroid.open as jest.Mock).mock.calls[1][0];
+    expect(second.maximumDate).toEqual(new Date(2026, 2, 7, 23, 59, 59, 999));
+  });
+
   it('has no minimum by default', async () => {
     const { ui } = setup();
     await renderWithProviders(ui);
@@ -160,6 +186,26 @@ describe('DateField on iOS', () => {
     });
     expect(mockPickerProps.maximumDate).toEqual(new Date(2026, 2, 10, 23, 59, 59, 999));
     expect(DateTimePickerAndroid.open).not.toHaveBeenCalled();
+  });
+
+  it('an explicit maximumDate replaces both the today limit and allowFuture', async () => {
+    const latest = new Date(2026, 2, 7);
+    await renderWithProviders(
+      <DateField
+        value={TODAY}
+        onChange={jest.fn()}
+        locale="es"
+        accessibilityLabel="Date"
+        displayValue="Today"
+        confirmLabel="Done"
+        cancelLabel="Cancel"
+        allowFuture
+        maximumDate={latest}
+      />,
+    );
+    fireEvent.press(screen.getByLabelText('Date'));
+    await screen.findByTestId('date-picker');
+    expect(mockPickerProps.maximumDate).toEqual(new Date(2026, 2, 7, 23, 59, 59, 999));
   });
 
   it('Done calls onChange with the picked local day', async () => {

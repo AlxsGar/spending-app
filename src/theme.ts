@@ -62,6 +62,12 @@ export const chart = {
   dashArray: [6, 4],
   legendWidth: 24,
   legendHeight: 12,
+  // Day dots are drawn only when each day has at least this much width (long
+  // ranges show the lines and the selected day's dot only).
+  dotMinSpacing: 8,
+  // How far a finger moves sideways before a drag takes over from a tap, and how
+  // far up or down before the scroll view takes the gesture instead.
+  scrubSlop: 10,
 } as const;
 
 // Timing and spring settings for the success feedback card.
