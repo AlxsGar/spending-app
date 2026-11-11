@@ -4,6 +4,7 @@ import { AppState } from 'react-native';
 import { AppGate } from '@/components/app-gate';
 import { NotificationHost } from '@/components/notification-host';
 import { requestReminderSync } from '@/services/reminders';
+import { resetAppLockForTests, useAppLockStore } from '@/stores/app-lock-store';
 import { useLanguageStore } from '@/stores/language-store';
 import { useNotificationTapStore } from '@/stores/notification-taps';
 import { renderWithProviders } from '@/test/render';
@@ -133,5 +134,22 @@ describe('NotificationHost: keeping reminders in step', () => {
     sync.mockClear();
     act(() => useLanguageStore.setState({ language: 'es' }));
     expect(sync).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('NotificationHost: app lock', () => {
+  afterEach(() => resetAppLockForTests());
+
+  it('holds a tap while locked and routes it after unlocking', async () => {
+    act(() => useAppLockStore.setState({ locked: true }));
+    useNotificationTapStore.getState().push(tap);
+    await renderWithProviders(<NotificationHost />);
+    expect(mockNavigate).not.toHaveBeenCalled();
+    expect(useNotificationTapStore.getState().pending).not.toBeNull();
+
+    act(() => useAppLockStore.setState({ locked: false }));
+    await waitFor(() => expect(mockNavigate).toHaveBeenCalledTimes(1));
+    expect(mockNavigate.mock.calls[0][0].params).toMatchObject({ open: '7', occ: '2026-11-20' });
+    expect(useNotificationTapStore.getState().pending).toBeNull();
   });
 });

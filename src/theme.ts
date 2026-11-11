@@ -37,6 +37,10 @@ export const sizes = {
   badge: 24,
   successIcon: 48,
   successCardMinWidth: 200,
+  // The PIN pad: round keys and the dots that show how many digits were typed.
+  pinKey: 64,
+  pinDot: 12,
+  pinPadMaxWidth: 288,
   // The tab bar's height, the lift that keeps the snackbar above it. Approximate:
   // the snackbar host sits at the root, outside the tabs, so it cannot use
   // useBottomTabBarHeight. On screens without a tab bar it floats about this much

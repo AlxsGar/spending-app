@@ -45,6 +45,41 @@ jest.mock('expo-sharing', () => ({
 jest.mock('expo-document-picker', () => ({
   getDocumentAsync: jest.fn().mockResolvedValue({ canceled: true, assets: null }),
 }));
+// App lock: the three native modules are only used through services/app-lock.ts.
+// Secure store is an in-memory map (read it with the mock's __items; clear it
+// with __reset), crypto uses Node's, and local authentication starts with a
+// device that has enrolled biometrics and accepts the prompt.
+jest.mock('expo-secure-store', () => {
+  const items = new Map<string, string>();
+  return {
+    __items: items,
+    __reset: () => items.clear(),
+    WHEN_UNLOCKED_THIS_DEVICE_ONLY: 6,
+    getItemAsync: jest.fn(async (key: string) => items.get(key) ?? null),
+    setItemAsync: jest.fn(async (key: string, value: string) => {
+      items.set(key, value);
+    }),
+    deleteItemAsync: jest.fn(async (key: string) => {
+      items.delete(key);
+    }),
+  };
+});
+jest.mock('expo-crypto', () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const nodeCrypto = require('crypto');
+  return {
+    CryptoDigestAlgorithm: { SHA256: 'SHA-256' },
+    digestStringAsync: jest.fn(async (_algorithm: string, data: string) =>
+      nodeCrypto.createHash('sha256').update(data).digest('hex'),
+    ),
+    getRandomBytesAsync: jest.fn(async (count: number) => new Uint8Array(nodeCrypto.randomBytes(count))),
+  };
+});
+jest.mock('expo-local-authentication', () => ({
+  hasHardwareAsync: jest.fn().mockResolvedValue(true),
+  isEnrolledAsync: jest.fn().mockResolvedValue(true),
+  authenticateAsync: jest.fn().mockResolvedValue({ success: true }),
+}));
 // Stores ask for a reminder sync after every write; the sync itself is tested
 // in reminders.test.ts (through jest.requireActual) and would otherwise read
 // the database in every other test.

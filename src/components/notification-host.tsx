@@ -3,6 +3,7 @@ import { useEffect } from 'react';
 import { AppState } from 'react-native';
 
 import { requestReminderSync } from '@/services/reminders';
+import { useAppLockStore } from '@/stores/app-lock-store';
 import { useLanguageStore } from '@/stores/language-store';
 import { useNotificationTapStore } from '@/stores/notification-taps';
 
@@ -20,6 +21,7 @@ export function NotificationHost() {
   const pending = useNotificationTapStore((state) => state.pending);
   const consume = useNotificationTapStore((state) => state.consume);
   const language = useLanguageStore((state) => state.language);
+  const locked = useAppLockStore((state) => state.locked);
 
   useEffect(() => {
     void requestReminderSync();
@@ -32,8 +34,10 @@ export function NotificationHost() {
     return () => subscription.remove();
   }, []);
 
+  // A tap waits while the app is locked: the lock shows first, and the normal
+  // destination follows once it is unlocked.
   useEffect(() => {
-    if (!pending || !navigationReady) return;
+    if (!pending || !navigationReady || locked) return;
     consume(pending.nonce);
     router.navigate({
       pathname: '/recurring',
@@ -43,7 +47,7 @@ export function NotificationHost() {
         n: String(pending.nonce),
       },
     });
-  }, [pending, navigationReady, consume, router]);
+  }, [pending, navigationReady, locked, consume, router]);
 
   return null;
 }

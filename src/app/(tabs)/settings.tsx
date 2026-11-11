@@ -1,6 +1,7 @@
 import { useTranslation } from 'react-i18next';
 import { ScrollView } from 'react-native';
 
+import { AppLockSetting } from '@/components/app-lock-setting';
 import { BackupSetting } from '@/components/backup-setting';
 import { DefaultCurrencySetting } from '@/components/default-currency-setting';
 import { GlobalCapSetting } from '@/components/global-cap-setting';
@@ -46,6 +47,7 @@ export default function SettingsScreen() {
             ) : null}
           </SettingRow>
         )}
+        <AppLockSetting />
         <BackupSetting />
         {/* Development tool, rendered only when __DEV__ (see docs/spec.md). */}
         {__DEV__ ? (
