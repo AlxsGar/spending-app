@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <!-- Full design, transparent. Colors from src/theme.ts: background #1A1A1A, accent #10B981,
+       text #FFFFFF. Fold band #70D5B3 (accent 40% toward white).
+       Scale 0.66: receipt and clasp tab stay inside the circle mask, the wallet's bottom corners just touch it. -->
+  <g transform="translate(512 512) scale(0.66) translate(-532 -521)">
+    <path d="M292 132 L316.4 92 L340.9 132 L365.3 92 L389.8 132 L414.2 92 L438.7 132 L463.1 92 L487.6 132 L512 92 L536.4 132 L560.9 92 L585.3 132 L609.8 92 L634.2 132 L658.7 92 L683.1 132 L707.6 92 L732 132 V470 H292 Z" fill="#FFFFFF"/>
+    <g fill="#1A1A1A">
+      <rect x="332" y="190" width="266" height="56" rx="28"/>
+      <rect x="332" y="290" width="266" height="56" rx="28"/>
+    </g>
+    <g fill="#10B981">
+      <circle cx="660" cy="218" r="34"/>
+      <circle cx="660" cy="318" r="34"/>
+    </g>
+    <g fill="none" stroke="#FFFFFF" stroke-width="11" stroke-linecap="round" stroke-linejoin="round">
+      <polyline points="645,220 655,230 676,208"/>
+      <polyline points="645,320 655,330 676,308"/>
+    </g>
+    <rect x="280" y="398" width="464" height="32" fill="#1A1A1A"/>
+    <rect x="192" y="430" width="640" height="520" rx="64" fill="#10B981"/>
+    <path d="M192 603 V494 A64 64 0 0 1 256 430 H768 A64 64 0 0 1 832 494 V603 Z" fill="#70D5B3"/>
+    <rect x="618" y="628" width="276" height="174" rx="58" fill="#1A1A1A"/>
+    <rect x="640" y="650" width="232" height="130" rx="36" fill="#10B981"/>
+    <circle cx="692" cy="715" r="22" fill="#FFFFFF"/>
+  </g>
+</svg>

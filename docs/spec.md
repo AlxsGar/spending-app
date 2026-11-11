@@ -399,11 +399,13 @@ Shown only in development builds (`__DEV__`), never in a release build.
 
 Light theme, categories, bank sync, cloud sync, multi-device, currency
 conversion, paid tier (RevenueCat), ads (AdMob), French, widgets, Apple
-Watch, web (v1 targets iOS and Android only). `[Q11]` App lock (PIN or biometrics): decide before release.
+Watch, web (v1 targets iOS and Android only).
 
 ## Open questions
 
-- `[Q11]` App lock (PIN or biometrics): deferred to release prep (user
-  decision); decide then.
+- App lock (was `[Q11]`): decided for the test build, slice 10b: optional
+  PIN (4–6 digits) with optional biometrics, locks at launch and after more
+  than 1 minute in the background; forgotten PIN resets via biometrics if
+  on, otherwise only by erasing all data (file backup is the way back).
 - Release prep, device check pending (from 9c): per-app language on iOS
   and Android 13+ in a development build.

@@ -1,16 +1,17 @@
 {
   "expo": {
-    "name": "spending-app",
-    "slug": "spending-app",
+    "name": "Tidy Tally",
+    "slug": "tidy-tally",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "spendingapp",
+    "scheme": "tidytally",
     "userInterfaceStyle": "dark",
     "ios": {
-      "icon": "./assets/expo.icon"
+      "bundleIdentifier": "com.alexisgarcia.tidytally"
     },
     "android": {
+      "package": "com.alexisgarcia.tidytally",
       "adaptiveIcon": {
         "backgroundColor": "#1A1A1A",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
@@ -26,7 +27,7 @@
         {
           "backgroundColor": "#1A1A1A",
           "image": "./assets/images/splash-icon.png",
-          "imageWidth": 76
+          "imageWidth": 128
         }
       ],
       "expo-sqlite",
@@ -39,6 +40,7 @@
       [
         "expo-notifications",
         {
+          "icon": "./assets/images/notification-icon.png",
           "color": "#10B981"
         }
       ]

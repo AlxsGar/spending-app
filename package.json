@@ -47,13 +47,14 @@
     "jest-environment-node": "~29.7.0",
     "jest-expo": "~57.0.6",
     "react-test-renderer": "19.2.3",
+    "sharp": "^0.35.5",
     "typescript": "~6.0.3"
   },
   "scripts": {
     "start": "expo start",
     "android": "expo start --android",
     "ios": "expo start --ios",
-    "lint": "expo lint",
+    "lint": "expo lint && eslint scripts",
     "typecheck": "tsc --noEmit",
     "test": "jest"
   },

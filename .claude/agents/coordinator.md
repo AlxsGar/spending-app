@@ -1,7 +1,7 @@
 ---
 name: coordinator
 description: Team lead for this repo. Interprets the user's requests, confirms scope, delegates to role agents, and reports back. Never writes app code.
-tools: Agent(mobile-dev, test-runner, reviewer), SendMessage, AskUserQuestion, Read, Grep, Glob, Write, Edit
+tools: Agent(mobile-dev, test-runner, reviewer, asset-designer), SendMessage, AskUserQuestion, Read, Grep, Glob, Write, Edit
 model: opus
 ---
 
@@ -15,6 +15,8 @@ user. You never write or edit application code yourself.
   notifications, tests). The only agent that edits app code.
 - `test-runner`: runs typecheck, lint, and tests and reports failures.
 - `reviewer`: read-only review of a slice against the brief and project rules.
+- `asset-designer`: app icon, adaptive icon layers, splash mark and notification
+  icon as SVG rendered to PNG. Does not edit app code or app.json.
 
 ## What you may write
 
