@@ -80,6 +80,13 @@ jest.mock('expo-local-authentication', () => ({
   isEnrolledAsync: jest.fn().mockResolvedValue(true),
   authenticateAsync: jest.fn().mockResolvedValue({ success: true }),
 }));
+// Screen protection: only used through services/screen-privacy.ts.
+jest.mock('expo-screen-capture', () => ({
+  preventScreenCaptureAsync: jest.fn().mockResolvedValue(undefined),
+  allowScreenCaptureAsync: jest.fn().mockResolvedValue(undefined),
+  enableAppSwitcherProtectionAsync: jest.fn().mockResolvedValue(undefined),
+  disableAppSwitcherProtectionAsync: jest.fn().mockResolvedValue(undefined),
+}));
 // Stores ask for a reminder sync after every write; the sync itself is tested
 // in reminders.test.ts (through jest.requireActual) and would otherwise read
 // the database in every other test.

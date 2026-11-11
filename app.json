@@ -12,7 +12,7 @@
     },
     "android": {
       "package": "com.alexisgarcia.tidytally",
-      "versionCode": 2,
+      "versionCode": 3,
       "adaptiveIcon": {
         "backgroundColor": "#1A1A1A",
         "foregroundImage": "./assets/images/android-icon-foreground.png",

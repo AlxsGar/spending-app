@@ -14,6 +14,7 @@ import {
 } from '@/services/app-lock';
 import type { VerifyResult } from '@/services/app-lock';
 import { eraseAllData } from '@/services/erase-data';
+import { setScreenPrivacy } from '@/services/screen-privacy';
 
 import { reloadAllStores } from './reload-all';
 
@@ -57,6 +58,19 @@ type State = {
 
 // When the app went to the background, or null while it is in the foreground.
 let backgroundedAt: number | null = null;
+
+// The screen-protection state last asked for, or null when none is applied (not
+// yet, or the last native call failed, so it is retried when the app is active).
+// Native calls run one after another, so a quick on then off cannot land reversed.
+let appliedPrivacy: boolean | null = null;
+let privacyChain: Promise<void> = Promise.resolve();
+function applyPrivacy(on: boolean): void {
+  appliedPrivacy = on;
+  privacyChain = privacyChain.then(async () => {
+    const ok = await setScreenPrivacy(on);
+    if (!ok && appliedPrivacy === on) appliedPrivacy = null;
+  });
+}
 
 export const useAppLockStore = create<State>((set, get) => {
   const noteWait = (result: VerifyResult, now = Date.now()) => {
@@ -114,6 +128,8 @@ export const useAppLockStore = create<State>((set, get) => {
         return;
       }
       if (state !== 'active') return;
+      // Retry a screen-protection call that failed earlier.
+      if (get().loaded && appliedPrivacy === null) applyPrivacy(get().enabled);
       const away = backgroundedAt;
       backgroundedAt = null;
       const { enabled, locked } = get();
@@ -225,7 +241,17 @@ export const useAppLockStore = create<State>((set, get) => {
   };
 });
 
+// Screen protection follows the lock: applied once the flags have loaded, then on
+// every change of `enabled` (turn on, turn off, erase).
+// A failed call is retried only on resume (handleAppState), never on other store changes.
+useAppLockStore.subscribe((state, previous) => {
+  const changed = state.enabled !== previous.enabled || state.loaded !== previous.loaded;
+  if (changed && state.loaded && state.enabled !== appliedPrivacy) applyPrivacy(state.enabled);
+});
+
 export function resetAppLockForTests(): void {
+  appliedPrivacy = null;
+  privacyChain = Promise.resolve();
   backgroundedAt = null;
   useAppLockStore.setState({
     loaded: false,
