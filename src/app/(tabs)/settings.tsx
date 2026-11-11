@@ -1,12 +1,11 @@
 import { useTranslation } from 'react-i18next';
-import { ScrollView } from 'react-native';
 
 import { AppLockSetting } from '@/components/app-lock-setting';
 import { BackupSetting } from '@/components/backup-setting';
 import { DefaultCurrencySetting } from '@/components/default-currency-setting';
 import { GlobalCapSetting } from '@/components/global-cap-setting';
 import { ReminderChips } from '@/components/reminder-chips';
-import { AppButton, AppText, Screen, SettingRow } from '@/components/ui';
+import { AppButton, AppText, Screen, ScreenScroll, SettingRow } from '@/components/ui';
 // Development tool: a test reminder in 15 seconds (see src/dev/test-reminder.ts).
 import { scheduleTestReminder } from '@/dev/test-reminder';
 import { openNotificationSettings } from '@/services/notifications';
@@ -21,8 +20,8 @@ export default function SettingsScreen() {
   const permission = useNotificationPermission();
 
   return (
-    <Screen>
-      <ScrollView>
+    <Screen bottom="tabBar">
+      <ScreenScroll>
         <DefaultCurrencySetting />
         <SettingRow
           label={t('settings.defaultReminders')}
@@ -59,7 +58,7 @@ export default function SettingsScreen() {
             />
           </SettingRow>
         ) : null}
-      </ScrollView>
+      </ScreenScroll>
     </Screen>
   );
 }

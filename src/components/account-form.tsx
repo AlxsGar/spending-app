@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Platform, ScrollView, StyleSheet, View } from 'react-native';
+import { Platform, StyleSheet, View } from 'react-native';
 import type { KeyboardTypeOptions } from 'react-native';
 
 import {
@@ -10,6 +10,7 @@ import {
   CurrencyPicker,
   IconPicker,
   Screen,
+  ScreenScroll,
   SwitchRow,
   TextField,
 } from '@/components/ui';
@@ -148,7 +149,7 @@ export function AccountForm({
 
   return (
     <Screen>
-      <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.content}>
+      <ScreenScroll keyboardShouldPersistTaps="handled" contentContainerStyle={styles.content}>
         <TextField
           label={t('accounts.nameLabel')}
           value={name}
@@ -214,7 +215,7 @@ export function AccountForm({
         />
         {failed ? <AppText color="alert">{t('accounts.saveError')}</AppText> : null}
         <AppButton label={t('accounts.save')} onPress={() => void save()} disabled={saving} />
-      </ScrollView>
+      </ScreenScroll>
       <ConfirmDialog
         visible={confirmingCurrency}
         title={t('accounts.currencyChangeTitle')}

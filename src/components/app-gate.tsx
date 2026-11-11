@@ -8,7 +8,7 @@ import { CapsDialogHost } from '@/components/caps-exceeded-dialog';
 import { LockHost } from '@/components/lock-host';
 import { LockLoadError } from '@/components/lock-load-error';
 import { NotificationHost } from '@/components/notification-host';
-import { ErrorState, LoadingState, Screen, SuccessHost } from '@/components/ui';
+import { AppHeader, ErrorState, LoadingState, Screen, SuccessHost } from '@/components/ui';
 import { useAppLockStore } from '@/stores/app-lock-store';
 import { useDefaultCurrencyStore } from '@/stores/default-currency';
 import { useLanguageStore } from '@/stores/language-store';
@@ -57,7 +57,7 @@ export function AppGate() {
   if (!ready || !lockLoaded) return <LoadingState />;
   if (error) {
     return (
-      <Screen>
+      <Screen headerless>
         <ErrorState
           message={t('common.loadError')}
           retryLabel={t('common.retry')}
@@ -81,10 +81,14 @@ export function AppGate() {
       >
         <Stack
           screenOptions={{
-            headerStyle: { backgroundColor: colors.background },
-            headerTintColor: colors.text,
-            headerShadowVisible: false,
-            headerBackButtonDisplayMode: 'minimal',
+            // The compact app bar, the same one the tabs use.
+            header: ({ options, route, back, navigation }) => (
+              <AppHeader
+                title={options.title ?? route.name}
+                onBack={back ? navigation.goBack : undefined}
+                backLabel={t('common.back')}
+              />
+            ),
             contentStyle: { backgroundColor: colors.background },
           }}
         >

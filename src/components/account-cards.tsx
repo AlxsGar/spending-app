@@ -56,6 +56,7 @@ export function AccountCards({ accounts, balances, projections, onOpen }: Props)
               colored
               variant="title"
               align="left"
+              fit
               maxFontSizeMultiplier={fontScaleLimits.maxHeight}
             />
             {projections ? (

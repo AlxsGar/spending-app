@@ -10,6 +10,7 @@ import {
   OptionPicker,
   SegmentedControl,
   TextField,
+  useScrollEndStyle,
 } from '@/components/ui';
 import type { Account } from '@/services/accounts';
 import { formatLongDate } from '@/services/format-date';
@@ -49,6 +50,7 @@ export function TransactionForm({
   onSubmit,
 }: Props) {
   const { t, i18n } = useTranslation();
+  const scrollEnd = useScrollEndStyle();
   const [accountId, setAccountId] = useState(initialAccountId);
   const [kind, setKind] = useState<TransactionKind>(initial?.kind ?? 'expense');
   const [amount, setAmount] = useState(initial?.amount ?? '');
@@ -89,7 +91,7 @@ export function TransactionForm({
   const dateError = errorFor(['invalidDate', 'dateInFuture']);
 
   return (
-    <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.content}>
+    <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={[styles.content, scrollEnd]}>
       <SegmentedControl
         value={kind}
         onChange={setKind}

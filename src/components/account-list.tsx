@@ -1,7 +1,7 @@
 import { useTranslation } from 'react-i18next';
 import { FlatList } from 'react-native';
 
-import { AmountText, ListRow } from '@/components/ui';
+import { AmountText, ListRow, useScrollEndStyle } from '@/components/ui';
 import type { Account } from '@/services/accounts';
 import { formatSignedMoney } from '@/services/money';
 
@@ -14,9 +14,11 @@ type Props = {
 
 export function AccountList({ accounts, balances, onOpen }: Props) {
   const { t } = useTranslation();
+  const scrollEnd = useScrollEndStyle();
   return (
     <FlatList
       data={accounts}
+      contentContainerStyle={scrollEnd}
       keyExtractor={(account) => String(account.id)}
       renderItem={({ item }) => (
         <ListRow

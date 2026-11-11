@@ -66,6 +66,13 @@
     "preset": "jest-expo",
     "setupFiles": [
       "<rootDir>/src/test/setup.ts"
+    ],
+    "testPathIgnorePatterns": [
+      "/node_modules/",
+      "<rootDir>/.claude/worktrees/"
+    ],
+    "modulePathIgnorePatterns": [
+      "<rootDir>/.claude/worktrees/"
     ]
   }
 }

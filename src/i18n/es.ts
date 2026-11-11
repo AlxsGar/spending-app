@@ -500,6 +500,7 @@ export const es: Translations = {
     retry: 'Reintentar',
     cancel: 'Cancelar',
     done: 'Listo',
+    back: 'Atrás',
     loadError: 'No se pudieron abrir los datos de la app. Reinicia la app e inténtalo de nuevo.',
   },
 };

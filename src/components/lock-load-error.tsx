@@ -16,7 +16,7 @@ export function LockLoadError() {
   const [eraseOpen, setEraseOpen] = useState(false);
 
   return (
-    <Screen>
+    <Screen headerless>
       <ErrorState
         message={t('common.loadError')}
         retryLabel={t('common.retry')}

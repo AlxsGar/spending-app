@@ -12,6 +12,10 @@ type Props = {
   align?: 'left' | 'center' | 'right';
   numberOfLines?: number;
   maxFontSizeMultiplier?: number;
+  // Shrink the text to stay on its lines (set numberOfLines), down to
+  // minimumFontScale of its size, instead of wrapping or cutting it.
+  adjustsFontSizeToFit?: boolean;
+  minimumFontScale?: number;
   // Announce changes to the text to screen readers (Android live region).
   accessibilityLiveRegion?: 'none' | 'polite' | 'assertive';
   style?: StyleProp<TextStyle>;
@@ -24,6 +28,8 @@ export function AppText({
   align = 'left',
   numberOfLines,
   maxFontSizeMultiplier,
+  adjustsFontSizeToFit,
+  minimumFontScale,
   accessibilityLiveRegion,
   style,
 }: Props) {
@@ -31,8 +37,11 @@ export function AppText({
     <Text
       accessibilityLiveRegion={accessibilityLiveRegion}
       numberOfLines={numberOfLines}
-      ellipsizeMode="tail"
+      // A fitted text shrinks instead; it is never cut with an ellipsis.
+      ellipsizeMode={adjustsFontSizeToFit ? undefined : 'tail'}
       maxFontSizeMultiplier={maxFontSizeMultiplier}
+      adjustsFontSizeToFit={adjustsFontSizeToFit}
+      minimumFontScale={minimumFontScale}
       style={[typography[variant], { color: colors[color], textAlign: align }, style]}
     >
       {children}

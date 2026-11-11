@@ -1,5 +1,7 @@
 import { act, fireEvent, screen, waitFor } from '@testing-library/react-native';
-import { AppState } from 'react-native';
+import type { ReactElement } from 'react';
+import { AppState, StyleSheet } from 'react-native';
+import { SafeAreaInsetsContext } from 'react-native-safe-area-context';
 
 import { AppGate } from '@/components/app-gate';
 import i18n from '@/i18n';
@@ -9,12 +11,25 @@ import { requestReminderSync } from '@/services/reminders';
 import { useDefaultCurrencyStore } from '@/stores/default-currency';
 import { useLanguageStore } from '@/stores/language-store';
 import { renderWithProviders } from '@/test/render';
+import { layout } from '@/theme';
 
 const mockGetDefaultCurrency = jest.fn();
 const mockInitDb = jest.fn();
 const mockDeleteSetting = jest.fn();
 const mockGetSetting = jest.fn();
 let mockLocales: { languageCode: string }[] = [{ languageCode: 'en' }];
+
+// The screenOptions the gate gives the Stack, kept so the header can be rendered.
+type MockStackOptions = {
+  header: (props: {
+    options: { title?: string };
+    route: { name: string };
+    navigation: { goBack: () => void };
+    back?: { title: string | undefined; href: string | undefined };
+  }) => ReactElement;
+};
+let mockStackOptions: MockStackOptions | null = null;
+const insets = { top: 30, right: 0, bottom: 0, left: 0 };
 
 // The gate reads the default currency at start; keep that read off the real db.
 jest.mock('@/services/accounts', () => ({
@@ -35,7 +50,8 @@ jest.mock('expo-localization', () => ({
 
 jest.mock('expo-router', () => {
   const { Text: MockText } = jest.requireActual('react-native');
-  function MockStack() {
+  function MockStack({ screenOptions }: { screenOptions: MockStackOptions }) {
+    mockStackOptions = screenOptions;
     return <MockText>app ready</MockText>;
   }
   MockStack.Screen = function MockStackScreen() {
@@ -173,6 +189,59 @@ describe('AppGate', () => {
     await act(async () => appStateListener('active'));
     await waitFor(() => expect(warn).toHaveBeenCalledTimes(1));
     expect(i18n.language).toBe('en');
+  });
+
+  describe('stack header', () => {
+    const renderHeader = async (props: {
+      title?: string;
+      back?: boolean;
+      goBack?: () => void;
+    }) => {
+      await renderWithProviders(<AppGate />);
+      await screen.findByText('app ready');
+      const header = (mockStackOptions as MockStackOptions).header({
+        options: { title: props.title },
+        route: { name: 'account/new' },
+        navigation: { goBack: props.goBack ?? jest.fn() },
+        back: props.back ? { title: undefined, href: undefined } : undefined,
+      });
+      // `screen` now points at the header alone.
+      await renderWithProviders(header);
+    };
+
+    it('shows the screen title', async () => {
+      await renderHeader({ title: 'New account' });
+      expect(screen.getByRole('header', { name: 'New account' })).toBeTruthy();
+    });
+
+    it('falls back to the route name without a title', async () => {
+      await renderHeader({});
+      expect(screen.getByRole('header', { name: 'account/new' })).toBeTruthy();
+    });
+
+    it('has no back button on the first route', async () => {
+      await renderHeader({ title: 'New account' });
+      expect(screen.queryByLabelText(en.common.back)).toBeNull();
+    });
+
+    it('a pushed route has a back button that goes back', async () => {
+      const goBack = jest.fn();
+      await renderHeader({ title: 'New account', back: true, goBack });
+      fireEvent.press(screen.getByLabelText(en.common.back));
+      expect(goBack).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it('keeps the headerless error screen below the status bar', async () => {
+    mockInitDb.mockRejectedValue(new Error('db'));
+    await renderWithProviders(
+      <SafeAreaInsetsContext.Provider value={insets}>
+        <AppGate />
+      </SafeAreaInsetsContext.Provider>,
+    );
+    await screen.findByText(en.common.loadError);
+    const style = StyleSheet.flatten(screen.getByTestId('screen-content').props.style);
+    expect(style.paddingTop).toBe(layout.screenTop + insets.top);
   });
 
   it('ignores other app states', async () => {

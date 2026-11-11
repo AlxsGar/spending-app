@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { SectionList, StyleSheet } from 'react-native';
 
 import { TransactionRow } from '@/components/transaction-row';
-import { SectionHeader } from '@/components/ui';
+import { SectionHeader, useScrollEndStyle } from '@/components/ui';
 import type { Account } from '@/services/accounts';
 import { groupByLocalDay, localDayKey, relativeDay } from '@/services/day-groups';
 import { formatLongDate } from '@/services/format-date';
@@ -25,6 +25,7 @@ type Props = {
 // deleted are skipped: they have no currency to show.
 export function TransactionList({ transactions, accounts, header, empty, onOpen }: Props) {
   const { t, i18n } = useTranslation();
+  const scrollEnd = useScrollEndStyle();
   // Changes at midnight, so "Today" labels follow the clock.
   const todayKey = localDayKey(new Date());
   const known = useMemo(
@@ -56,7 +57,7 @@ export function TransactionList({ transactions, accounts, header, empty, onOpen 
     <SectionList
       sections={sections}
       keyExtractor={(item) => String(item.id)}
-      contentContainerStyle={sections.length === 0 ? styles.grow : undefined}
+      contentContainerStyle={sections.length === 0 ? [styles.grow, scrollEnd] : scrollEnd}
       ListHeaderComponent={<>{header}</>}
       ListEmptyComponent={<>{empty}</>}
       stickySectionHeadersEnabled={false}

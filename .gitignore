@@ -44,3 +44,6 @@ example
 
 # Credentials
 credentials
+
+# Agent worktrees
+.claude/worktrees/

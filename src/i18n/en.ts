@@ -502,6 +502,7 @@ export const en = {
     retry: 'Try again',
     cancel: 'Cancel',
     done: 'Done',
+    back: 'Back',
     loadError: 'Could not open the app data. Restart the app and try again.',
   },
 };

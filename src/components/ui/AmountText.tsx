@@ -1,6 +1,7 @@
 import type { StyleProp, TextStyle } from 'react-native';
 
 import { formatSignedMoney } from '@/services/money';
+import { fontScaleLimits } from '@/theme';
 import type { ColorToken, TypographyVariant } from '@/theme';
 
 import { AppText } from './AppText';
@@ -19,6 +20,9 @@ type Props = {
   showPlus?: boolean;
   // Greyed (secondary text), for rows that are finished.
   muted?: boolean;
+  // Always one line: a long amount shrinks to fit the width (down to the
+  // theme's minFit) instead of wrapping (fixed-width boxes such as account cards).
+  fit?: boolean;
 };
 
 const tabular: StyleProp<TextStyle> = { fontVariant: ['tabular-nums'] };
@@ -32,6 +36,7 @@ export function AmountText({
   colored = false,
   showPlus = false,
   muted = false,
+  fit = false,
 }: Props) {
   let color: ColorToken = 'text';
   if (colored && cents > 0) color = 'accent';
@@ -44,6 +49,9 @@ export function AmountText({
       align={align}
       color={color}
       maxFontSizeMultiplier={maxFontSizeMultiplier}
+      numberOfLines={fit ? 1 : undefined}
+      adjustsFontSizeToFit={fit ? true : undefined}
+      minimumFontScale={fit ? fontScaleLimits.minFit : undefined}
       style={tabular}
     >
       {formatSignedMoney(cents, currency, { showPlus })}

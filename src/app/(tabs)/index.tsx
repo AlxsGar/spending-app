@@ -1,7 +1,6 @@
 import { useRouter } from 'expo-router';
 import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ScrollView } from 'react-native';
 
 import { AccountCards } from '@/components/account-cards';
 import { CapBanner } from '@/components/cap-banner';
@@ -16,6 +15,7 @@ import {
   EmptyState,
   ErrorState,
   LoadingState,
+  ScreenScroll,
   SectionHeader,
 } from '@/components/ui';
 import type { Account } from '@/services/accounts';
@@ -61,7 +61,7 @@ export default function HomeScreen() {
     );
   } else {
     body = (
-      <ScrollView>
+      <ScreenScroll>
         <CapBanner />
         <HomeChart accounts={accounts} transactions={transactions} />
         {projection.overall ? <ProjectionSummary lines={projection.overall} /> : null}
@@ -88,7 +88,7 @@ export default function HomeScreen() {
             />
           ))
         )}
-      </ScrollView>
+      </ScreenScroll>
     );
   }
 

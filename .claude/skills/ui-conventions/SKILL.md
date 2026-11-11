@@ -37,8 +37,11 @@ Rules:
 - All visual values come from `src/theme.ts`: colors, type scale, spacing,
   radii. If a value is missing, add it to the theme. Never inline one.
 - Screens use the wrappers in `src/components/ui/` (for example `Screen`,
-  `AppText`, `AppButton`, `AppCard`, `AmountText`, `EmptyState`). If a
-  wrapper is missing, create it there first, then use it.
+  `ScreenScroll`, `AppHeader`, `AppText`, `AppButton`, `AppCard`,
+  `AmountText`, `EmptyState`). If a wrapper is missing, create it there
+  first, then use it.
+- Layout values live in the theme's `layout` and `header` groups; the
+  one-line amount limit is `fontScaleLimits.minFit`.
 - A screen file composes components. It holds no styling numbers.
 - Use React Native Paper's components whenever one exists for the need,
   always through the wrappers in `src/components/ui/`. Build a custom
@@ -51,6 +54,22 @@ Rules:
 - Spacing uses the theme scale only: 4, 8, 12, 16, 24, 32.
 - Screen horizontal padding is 16. Vertical gap between sections is 24,
   between related items 8 or 12.
+- `Screen` has a small top gap under the header (`layout.screenTop`) and no
+  bottom padding. The space after the last item is padding inside the scroll
+  view, never empty space outside it, so content runs down to the tab bar or
+  the screen edge with no band under it.
+- Tell `Screen` what is under it with `bottom`: `'edge'` (the default, stack
+  screens: `layout.scrollEnd`), `'tabBar'` (a tab without the FAB:
+  `layout.scrollEndTabBar`) or `'fab'` (a tab with the FAB:
+  `layout.fabClearance`, so the last row scrolls clear of the button).
+  `TabScreen` already sets `'fab'`.
+- Every vertical scroll view inside a `Screen` takes that bottom padding: use
+  the `ScreenScroll` wrapper for a plain scroll view, or add
+  `useScrollEndStyle()` to the `contentContainerStyle` of a list or a form's
+  scroll view. A component that renders both the `Screen` and the scroll view
+  uses `ScreenScroll` (the hook only works inside the `Screen`).
+- A screen shown without a navigator header (the start-up error screens) uses
+  `<Screen headerless>`, which adds the status bar inset to the top gap.
 - Cards use `surface` on `background` with radius 12 and no border.
 - One primary action per screen. Secondary actions are visually quieter.
 - Touch targets are at least 48 by 48.
@@ -61,6 +80,10 @@ Rules:
 - At most three text sizes on one screen.
 - Amounts use `AmountText`: tabular numbers, right-aligned in lists, with
   the currency code or symbol from the account, never hardcoded.
+- An amount in a fixed-width box (the account cards) uses `AmountText` with
+  `fit`: always one line, shrinking to fit down to `fontScaleLimits.minFit`.
+  It never wraps and is never cut with an ellipsis. Other text keeps the tail
+  ellipsis.
 - Use weight and size for hierarchy before reaching for color.
 
 ## Color
@@ -83,6 +106,26 @@ Rules:
 Every screen and list handles all four states: loading, empty, error, and
 populated. The empty state says what the screen is for and offers the one
 action that fills it.
+
+## Header
+
+Every tab and stack screen has the same compact app bar: the `AppHeader`
+wrapper in `src/components/ui/`, which is Paper's small `Appbar.Header`. Never
+use the navigator's default header and never import `Appbar` in a screen.
+
+- It is set once per navigator as the `header` screen option: the Tabs in
+  `src/app/(tabs)/_layout.tsx` and the Stack in `src/components/app-gate.tsx`.
+  Screens only set `title` (through `Stack.Screen options` or the tab options);
+  without one the route name shows.
+- Its height and title come from the theme's `header` tokens (`header.height`,
+  48 px; `header.title`, the `bodyStrong` size; `header.titleGap` between the
+  back button and the title). Nothing inline.
+- Stack screens that can go back show a back button, a full 48 by 48 touch
+  target with the "Back" accessibility label (`common.back`). Tabs have none.
+- The header adds the status bar inset above the bar, so a screen under it
+  adds none. Only a screen with no header uses `<Screen headerless>`.
+- The title is one line, ellipsized, and is the screen's heading for screen
+  readers.
 
 ## Success feedback
 

@@ -4,5 +4,9 @@ import { AddFab } from '@/components/add-fab';
 import { Screen } from '@/components/ui';
 
 export function TabScreen({ children }: { children: ReactNode }) {
-  return <Screen overlay={<AddFab />}>{children}</Screen>;
+  return (
+    <Screen overlay={<AddFab />} bottom="fab">
+      {children}
+    </Screen>
+  );
 }

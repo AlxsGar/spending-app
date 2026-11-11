@@ -34,6 +34,26 @@ const sizeOf = (id: number) => {
   return { width: style.width, height: style.height };
 };
 
+describe('AccountCards amount', () => {
+  it('stays on one line and shrinks to fit instead of wrapping', async () => {
+    mockFontScale = 1;
+    await renderWithProviders(
+      <AccountCards
+        accounts={[make(1, 'A', 'USD')]}
+        balances={{ 1: 2903600000 }}
+        onOpen={jest.fn()}
+      />,
+    );
+
+    const amount = screen.getByText(/29,036,000\.00/);
+    expect(amount.props.numberOfLines).toBe(1);
+    expect(amount.props.adjustsFontSizeToFit).toBe(true);
+    expect(amount.props.minimumFontScale).toBe(fontScaleLimits.minFit);
+    expect(fontScaleLimits.minFit).toBeGreaterThan(0);
+    expect(fontScaleLimits.minFit).toBeLessThan(1);
+  });
+});
+
 describe('AccountCards sizing', () => {
   it('gives every card the same theme size at the default font scale', async () => {
     mockFontScale = 1;

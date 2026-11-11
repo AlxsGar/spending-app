@@ -1,11 +1,10 @@
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { useState } from 'react';
-import { ScrollView } from 'react-native';
 
 import { RecurringSection } from '@/components/recurring-section';
 import { RecurringSkipDialog } from '@/components/recurring-skip-dialog';
-import { EmptyState, ErrorState, LoadingState, Screen } from '@/components/ui';
+import { EmptyState, ErrorState, LoadingState, Screen, ScreenScroll } from '@/components/ui';
 import { isReminderActionable } from '@/services/reminder-plan';
 import { actionOccurrence } from '@/services/recurring';
 import type { Day } from '@/services/recurring';
@@ -83,7 +82,7 @@ export default function RecurringListScreen() {
         : undefined;
     body = (
       <Screen>
-        <ScrollView>
+        <ScreenScroll>
           <RecurringSection
             hideHeader
             openRequest={openRequest}
@@ -94,7 +93,7 @@ export default function RecurringListScreen() {
             onPay={(id) => router.push({ pathname: '/recurring/[id]/pay', params: { id } })}
             onSkip={askSkip}
           />
-        </ScrollView>
+        </ScreenScroll>
         {skipping && skipPayment ? (
           <RecurringSkipDialog
             payment={skipPayment}

@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ScrollView, StyleSheet, View } from 'react-native';
 
-import { AppButton, AppText, DateField } from '@/components/ui';
+import { AppButton, AppText, DateField, useScrollEndStyle } from '@/components/ui';
 import { fromBounds, toBounds, validateCustomRange, withinBounds } from '@/services/chart-range';
 import { formatShortDate } from '@/services/format-date';
 import { spacing } from '@/theme';
@@ -22,6 +22,7 @@ type Props = {
 // bounds is ignored. Apply still checks the range as a guard.
 export function ChartRangeForm({ initialFrom, initialTo, today, onApply, onCancel }: Props) {
   const { t, i18n } = useTranslation();
+  const scrollEnd = useScrollEndStyle();
   const [from, setFrom] = useState(initialFrom);
   const [to, setTo] = useState(initialTo);
   const fromRange = fromBounds(to);
@@ -52,7 +53,7 @@ export function ChartRangeForm({ initialFrom, initialTo, today, onApply, onCance
   );
 
   return (
-    <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+    <ScrollView contentContainerStyle={[styles.content, scrollEnd]} keyboardShouldPersistTaps="handled">
       {field(t('chart.from'), from, fromRange, setFrom)}
       {field(t('chart.to'), to, toRange, setTo)}
       <AppButton

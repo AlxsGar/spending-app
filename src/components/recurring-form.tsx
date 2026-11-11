@@ -11,6 +11,7 @@ import {
   OptionPicker,
   SwitchRow,
   TextField,
+  useScrollEndStyle,
 } from '@/components/ui';
 import type { Account } from '@/services/accounts';
 import { formatLongDate } from '@/services/format-date';
@@ -83,6 +84,7 @@ export function RecurringForm({
   onSubmit,
 }: Props) {
   const { t, i18n } = useTranslation();
+  const scrollEnd = useScrollEndStyle();
   const [name, setName] = useState(initial?.name ?? '');
   const [accountId, setAccountId] = useState(initialAccountId);
   const [amount, setAmount] = useState(initial?.amount ?? '');
@@ -177,7 +179,7 @@ export function RecurringForm({
     isOnceOnly({ interval: parsedInterval.interval, unit, startDate, endDate });
 
   return (
-    <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.content}>
+    <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={[styles.content, scrollEnd]}>
       <TextField
         label={t('recurring.nameLabel')}
         value={name}

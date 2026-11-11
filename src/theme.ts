@@ -48,6 +48,21 @@ export const sizes = {
   tabBar: 56,
 } as const;
 
+// Screen layout (Screen and the scroll views inside it). screenTop is the small
+// gap between the header and the first content. Screen has no bottom padding of
+// its own: the space after the last item is padding inside the scroll view, so
+// content runs down to the tab bar or the screen edge with no band under it.
+// scrollEnd is that padding on screens without a tab bar (the stack screens);
+// under a tab bar it is scrollEndTabBar; with the FAB it is fabClearance (the
+// FAB, Paper's margin under it and the same again above it), so the last row can
+// scroll clear of the button.
+export const layout = {
+  screenTop: spacing.sm,
+  scrollEnd: spacing.xl,
+  scrollEndTabBar: 0,
+  fabClearance: sizes.fab + spacing.lg * 2,
+} as const;
+
 // The line chart (LineChart). plotHeight is the height of the drawing area;
 // plotInset keeps the dots inside it. Lines are lineWidth thick with a dot of
 // dotRadius on each day; the selected day gets a larger dot (selectedDotRadius)
@@ -116,6 +131,8 @@ export const deck = {
 export const fontScaleLimits = {
   maxHeight: 2,
   maxWidth: 1.25,
+  // How far a one-line amount may shrink to fit its box (AmountText `fit`).
+  minFit: 0.5,
 } as const;
 
 export function scaleSize(base: number, fontScale: number, max: number): number {
@@ -130,6 +147,15 @@ export const typography = {
 } as const;
 
 export type TypographyVariant = keyof typeof typography;
+
+// The compact app bar (AppHeader) on every tab and stack screen: as tall as one
+// touch target, with the title in the bodyStrong size. The status bar inset is
+// added on top of the height. titleGap separates the title from the back button.
+export const header = {
+  height: sizes.touchTarget,
+  title: typography.bodyStrong,
+  titleGap: spacing.xs,
+} as const;
 
 export const opacity = {
   divider: 0.1,

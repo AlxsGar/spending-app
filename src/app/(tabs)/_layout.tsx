@@ -3,6 +3,7 @@ import { Tabs } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import type { ColorValue } from 'react-native';
 
+import { AppHeader } from '@/components/ui';
 import { colors, sizes } from '@/theme';
 
 type IconName = keyof typeof MaterialCommunityIcons.glyphMap;
@@ -20,9 +21,8 @@ export default function TabsLayout() {
   return (
     <Tabs
       screenOptions={{
-        headerStyle: { backgroundColor: colors.background },
-        headerTintColor: colors.text,
-        headerShadowVisible: false,
+        // The compact app bar, the same one the stack screens use (app-gate).
+        header: ({ options, route }) => <AppHeader title={options.title ?? route.name} />,
         tabBarActiveTintColor: colors.accentSecondary,
         tabBarInactiveTintColor: colors.textSecondary,
         tabBarStyle: { backgroundColor: colors.surface, borderTopWidth: 0 },

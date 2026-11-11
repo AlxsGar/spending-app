@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ScrollView, StyleSheet, View } from 'react-native';
 
-import { AppButton, AppText, OptionPicker, TextField } from '@/components/ui';
+import { AppButton, AppText, OptionPicker, TextField, useScrollEndStyle } from '@/components/ui';
 import { createOnce } from '@/components/ui/once';
 import type { Account } from '@/services/accounts';
 import { formatLongDate } from '@/services/format-date';
@@ -43,6 +43,7 @@ export function RecurringPayForm({
   onSubmit,
 }: Props) {
   const { t, i18n } = useTranslation();
+  const scrollEnd = useScrollEndStyle();
   const own = accounts.find((item) => item.id === payment.accountId);
   const [accountId, setAccountId] = useState<number | null>(own ? own.id : null);
   const [amount, setAmount] = useState(() =>
@@ -78,7 +79,7 @@ export function RecurringPayForm({
   };
 
   return (
-    <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.content}>
+    <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={[styles.content, scrollEnd]}>
       <View style={styles.heading}>
         <AppText variant="title">{payment.name}</AppText>
         <AppText color="textSecondary">
