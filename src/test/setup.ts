@@ -26,6 +26,25 @@ jest.mock('expo-notifications', () => ({
   cancelScheduledNotificationAsync: jest.fn().mockResolvedValue(undefined),
   scheduleNotificationAsync: jest.fn().mockResolvedValue('id'),
 }));
+// Backup files: the native modules are only used through
+// services/backup-files.ts, which tests replace or drive through these mocks.
+jest.mock('expo-file-system', () => ({
+  Paths: { cache: 'file:///cache/' },
+  File: jest.fn().mockImplementation((...parts: unknown[]) => ({
+    uri: parts.map(String).join('/'),
+    create: jest.fn(),
+    write: jest.fn(),
+    delete: jest.fn(),
+    text: jest.fn().mockResolvedValue(''),
+  })),
+}));
+jest.mock('expo-sharing', () => ({
+  isAvailableAsync: jest.fn().mockResolvedValue(true),
+  shareAsync: jest.fn().mockResolvedValue(undefined),
+}));
+jest.mock('expo-document-picker', () => ({
+  getDocumentAsync: jest.fn().mockResolvedValue({ canceled: true, assets: null }),
+}));
 // Stores ask for a reminder sync after every write; the sync itself is tested
 // in reminders.test.ts (through jest.requireActual) and would otherwise read
 // the database in every other test.

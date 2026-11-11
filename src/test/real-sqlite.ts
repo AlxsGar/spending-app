@@ -95,6 +95,9 @@ export function createRealSqlite() {
         changes: Number(result.changes),
       };
     },
+    closeAsync: async (): Promise<void> => {
+      raw.close();
+    },
     // Real BEGIN / COMMIT / ROLLBACK. A throw inside the task rolls back.
     withTransactionAsync: async (task: () => Promise<void>): Promise<void> => {
       raw.exec('BEGIN');

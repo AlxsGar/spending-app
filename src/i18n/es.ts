@@ -356,6 +356,32 @@ export const es: Translations = {
       'Te avisa cuando tus gastos en {{currency}} superan este monto. Déjalo vacío para no tener límite.',
     globalCapSave: 'Guardar límite',
     globalCapSaveError: 'No se pudo guardar el límite global. Inténtalo de nuevo.',
+    backup: {
+      title: 'Copia de seguridad',
+      note: 'El archivo de la copia no está cifrado. Contiene todos tus datos financieros, así que guárdalo en un lugar seguro.',
+      export: 'Exportar copia',
+      import: 'Importar copia',
+      exportError: 'No se pudo exportar la copia. Inténtalo de nuevo.',
+      readError: 'No se pudo leer ese archivo. Inténtalo de nuevo.',
+      importError: 'No se pudo restaurar la copia. Tus datos actuales no cambiaron.',
+      error_notJson: 'Ese archivo no es una copia: no es un JSON válido.',
+      error_empty: 'Ese archivo está vacío.',
+      error_wrongFormat: 'Ese archivo no es una copia de esta app.',
+      error_unknownFormatVersion: 'Esta versión de la app no admite el formato de esta copia.',
+      error_malformed: 'El archivo de la copia está dañado o incompleto, así que no se importó.',
+      error_newerSchema:
+        'Esta copia es de una versión más nueva de la app. Actualiza la app para importarla.',
+      confirmTitle: '¿Reemplazar todos los datos?',
+      confirmMessage:
+        'Cuentas: {{accounts}}\nTransacciones: {{transactions}}\nPagos recurrentes: {{recurring}}\nExportada: {{date}}\nVersión de la app: {{version}}\n\nTodos tus datos actuales serán reemplazados por esta copia. No se puede deshacer.',
+      error_tooLarge: 'Este archivo es demasiado grande para ser una copia.',
+      reloadError:
+        'Copia restaurada, pero las pantallas no se pudieron actualizar. Cierra y vuelve a abrir la app para verla.',
+      restoring: 'Restaurando…',
+      restoringMessage: 'Espera un momento. No cierres la app.',
+      confirm: 'Reemplazar datos',
+      restored: 'Copia restaurada',
+    },
     dev: {
       testReminder: 'Recordatorio de prueba (dev)',
       testReminderAction: 'Enviar en 15 segundos',

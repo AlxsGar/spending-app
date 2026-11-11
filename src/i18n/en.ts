@@ -356,6 +356,31 @@ export const en = {
       'Warns you when your expenses in {{currency}} go over this amount. Leave empty for no cap.',
     globalCapSave: 'Save cap',
     globalCapSaveError: 'Could not save the global cap. Try again.',
+    backup: {
+      title: 'Backup',
+      note: 'The backup file is not encrypted. It contains all your financial data, so keep it somewhere safe.',
+      export: 'Export backup',
+      import: 'Import backup',
+      exportError: 'Could not export the backup. Try again.',
+      readError: 'Could not read that file. Try again.',
+      importError: 'Could not restore the backup. Your current data was not changed.',
+      error_notJson: 'That file is not a backup: it is not valid JSON.',
+      error_empty: 'That file is empty.',
+      error_wrongFormat: 'That file is not a backup from this app.',
+      error_unknownFormatVersion: 'This backup format is not supported by this version of the app.',
+      error_malformed: 'That backup file is damaged or incomplete, so it was not imported.',
+      error_newerSchema: 'This backup is from a newer version of the app. Update the app to import it.',
+      confirmTitle: 'Replace all data?',
+      confirmMessage:
+        'Accounts: {{accounts}}\nTransactions: {{transactions}}\nRecurring payments: {{recurring}}\nExported: {{date}}\nApp version: {{version}}\n\nAll your current data will be replaced by this backup. This cannot be undone.',
+      error_tooLarge: 'This file is too large to be a backup.',
+      reloadError:
+        'Backup restored, but the screens could not refresh. Close and reopen the app to see it.',
+      restoring: 'Restoring…',
+      restoringMessage: 'Please wait. Do not close the app.',
+      confirm: 'Replace data',
+      restored: 'Backup restored',
+    },
     // Development tools (shown only in development builds, see docs/spec.md).
     dev: {
       testReminder: 'Test reminder (dev)',

@@ -5,19 +5,28 @@ const SCHEMA_VERSION = 8;
 
 let dbPromise: Promise<SQLite.SQLiteDatabase> | null = null;
 
-async function migrate(db: SQLite.SQLiteDatabase): Promise<void> {
+export const CURRENT_SCHEMA_VERSION = SCHEMA_VERSION;
+
+// Runs the upgrade steps up to `target` (the current schema by default). A lower
+// target builds an older schema; the backup import uses that in a scratch
+// database, so an old backup is upgraded by these same steps.
+export async function migrate(
+  db: SQLite.SQLiteDatabase,
+  target: number = SCHEMA_VERSION,
+): Promise<void> {
   const row = await db.getFirstAsync<{ user_version: number }>('PRAGMA user_version');
   const current = row?.user_version ?? 0;
 
-  if (current >= SCHEMA_VERSION) return;
+  if (current >= target) return;
+  const runs = (step: number) => current < step && step <= target;
 
   await db.withTransactionAsync(async () => {
-    if (current < 1) {
+    if (runs(1)) {
       await db.execAsync(
         'CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT)',
       );
     }
-    if (current < 2) {
+    if (runs(2)) {
       await db.execAsync(
         `CREATE TABLE IF NOT EXISTS accounts (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -29,7 +38,7 @@ async function migrate(db: SQLite.SQLiteDatabase): Promise<void> {
         )`,
       );
     }
-    if (current < 3) {
+    if (runs(3)) {
       // recurring_id has no foreign key: the recurring table comes later.
       await db.execAsync(
         `CREATE TABLE IF NOT EXISTS transactions (
@@ -47,7 +56,7 @@ async function migrate(db: SQLite.SQLiteDatabase): Promise<void> {
         'CREATE INDEX IF NOT EXISTS idx_transactions_account_date ON transactions (account_id, date)',
       );
     }
-    if (current < 4) {
+    if (runs(4)) {
       // Rows left behind by account deletes before they cascaded.
       await db.execAsync(
         'DELETE FROM transactions WHERE account_id NOT IN (SELECT id FROM accounts)',
@@ -94,14 +103,14 @@ async function migrate(db: SQLite.SQLiteDatabase): Promise<void> {
         throw new Error('Foreign key check failed after rebuilding transactions');
       }
     }
-    if (current < 5) {
+    if (runs(5)) {
       // Existing accounts get no anchor (NULL), so their balances do not change.
       await db.execAsync(
         'ALTER TABLE accounts ADD COLUMN balance_anchor_cents INTEGER NOT NULL DEFAULT 0',
       );
       await db.execAsync('ALTER TABLE accounts ADD COLUMN balance_anchor_at TEXT');
     }
-    if (current < 6) {
+    if (runs(6)) {
       await db.execAsync(
         `CREATE TABLE recurring_payments (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -169,12 +178,12 @@ async function migrate(db: SQLite.SQLiteDatabase): Promise<void> {
         throw new Error('Foreign key check failed after rebuilding transactions');
       }
     }
-    if (current < 7) {
+    if (runs(7)) {
       // Calendar days (YYYY-MM-DD); NULL on existing rows means none.
       await db.execAsync('ALTER TABLE recurring_payments ADD COLUMN dismissed_at TEXT');
       await db.execAsync('ALTER TABLE transactions ADD COLUMN recurring_occurrence TEXT');
     }
-    if (current < 8) {
+    if (runs(8)) {
       // account_id NULL is the global cap. No cap means no row.
       await db.execAsync(
         `CREATE TABLE soft_caps (
@@ -191,7 +200,7 @@ async function migrate(db: SQLite.SQLiteDatabase): Promise<void> {
         'CREATE UNIQUE INDEX idx_soft_caps_scope ON soft_caps (COALESCE(account_id, 0))',
       );
     }
-    await db.execAsync(`PRAGMA user_version = ${SCHEMA_VERSION}`);
+    await db.execAsync(`PRAGMA user_version = ${target}`);
   });
 }
 
